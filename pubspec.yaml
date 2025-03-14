@@ -1,0 +1,22 @@
+name: sake_tank_app
+description: 日本酒製造現場のタンク管理アプリ
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  # 文字エンコーディング対応用
+  # charset_converter: ^2.1.1  # 必要に応じてコメントを外してください
+  csv: ^5.0.2
+  path_provider: ^2.1.1
+  shared_preferences: ^2.2.0  # 追加: 割水計画の保存用
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/tank_quick_reference.csv
