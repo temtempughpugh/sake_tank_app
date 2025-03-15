@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/csv_service.dart';
 import '../models/tank_data.dart';
 import '../models/measurement_result.dart';
+import '../models/tank_category.dart';
+import '../widgets/main_drawer.dart';
 
 class QuickReferenceScreen extends StatefulWidget {
   @override
@@ -14,6 +16,11 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
   String? _selectedTank;
   bool _isLoading = true;
   late TabController _tabController;
+  
+  // For tank categorization
+  List<TankCategory> _categories = [];
+  Map<String, List<String>> _categoryTanks = {};
+  Map<String, bool> _expandedCategories = {};
   
   // 検尺タブの状態管理
   final TextEditingController _measurementController = TextEditingController();
@@ -30,6 +37,14 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadTanks();
+    
+    // Initialize categories
+    _categories = TankCategories.getCategories();
+    
+    // Set all categories as expanded initially
+    for (var category in _categories) {
+      _expandedCategories[category.name] = true;
+    }
   }
   
   @override
@@ -40,6 +55,12 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
     super.dispose();
   }
 
+  // タンク番号のクリーニングユーティリティ
+  String _cleanTankNumber(String tankNumber) {
+    if (tankNumber == "仕込水タンク") return tankNumber;
+    return tankNumber.replaceAll(RegExp(r'(?i)No\.|N0\.'), '').trim();
+  }
+
   Future<void> _loadTanks() async {
     setState(() {
       _isLoading = true;
@@ -47,11 +68,61 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
     
     try {
       final tanks = await _csvService.getAvailableTankNumbers();
+      
+      // Group tanks by category
+      Map<String, List<String>> categoryTanks = {};
+      for (var category in _categories) {
+        categoryTanks[category.name] = [];
+      }
+      
+      // Assign each tank to its category
+      for (var tank in tanks) {
+        final cleanTankNumber = _cleanTankNumber(tank);
+        
+        bool assigned = false;
+        for (var category in _categories.where((c) => c.name != 'その他')) {
+          if (category.tankNumbers.contains(cleanTankNumber)) {
+            categoryTanks[category.name]!.add(tank);
+            assigned = true;
+            break;
+          }
+        }
+        
+        if (!assigned) {
+          // Add to "Others" category
+          categoryTanks['その他']!.add(tank);
+        }
+      }
+      
+      // Sort tanks within each category
+      for (var category in categoryTanks.keys) {
+        categoryTanks[category]!.sort((a, b) {
+          // 特殊なタンク名（数字でない）は後ろに
+          bool aIsSpecial = !RegExp(r'^\d+$').hasMatch(_cleanTankNumber(a));
+          bool bIsSpecial = !RegExp(r'^\d+$').hasMatch(_cleanTankNumber(b));
+          
+          if (aIsSpecial && !bIsSpecial) return 1;
+          if (!aIsSpecial && bIsSpecial) return -1;
+          if (aIsSpecial && bIsSpecial) return a.compareTo(b);
+          
+          // 数値で比較
+          return int.parse(_cleanTankNumber(a)).compareTo(int.parse(_cleanTankNumber(b)));
+        });
+      }
+      
       setState(() {
         _availableTanks = tanks;
+        _categoryTanks = categoryTanks;
         _isLoading = false;
+        
+        // Set initial selected tank if available
         if (tanks.isNotEmpty) {
-          _selectedTank = tanks.first;
+          // Try to select a commonly used tank first
+          if (tanks.any((t) => _cleanTankNumber(t) == '16')) { // 蔵出しタンク
+            _selectedTank = tanks.firstWhere((t) => _cleanTankNumber(t) == '16');
+          } else if (tanks.isNotEmpty) {
+            _selectedTank = tanks.first;
+          }
         }
       });
     } catch (e) {
@@ -139,6 +210,13 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
       ),
     );
   }
+  
+  // Toggle category expansion
+  void _toggleCategory(String categoryName) {
+    setState(() {
+      _expandedCategories[categoryName] = !(_expandedCategories[categoryName] ?? false);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,55 +230,62 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
             Tab(icon: Icon(Icons.arrow_upward), text: '容量から検尺'),
           ],
         ),
-        actions: [
-          Builder(
-            builder: (context) => IconButton(
-              icon: Icon(Icons.menu),
-              onPressed: () => Scaffold.of(context).openEndDrawer(),
-            ),
-          ),
-        ],
       ),
+      endDrawer: MainDrawer(), // Use the shared main drawer
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // タンク選択部分
+                // タンク選択部分 - Replaced with categorized dropdown
                 Container(
                   padding: EdgeInsets.all(16),
                   color: Colors.grey[100],
-                  child: Row(
+                  child: Column(
                     children: [
-                      Text('タンク番号: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedTank,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                      Row(
+                        children: [
+                          Text('タンク番号: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedTank,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              hint: Text('タンクを選択'),
+                              onChanged: (String? newValue) {
+                                setState(() {
+                                  _selectedTank = newValue;
+                                  // 選択変更時にリセット
+                                  _capacityResult = null;
+                                  _measurementResult = null;
+                                });
+                              },
+                              items: _buildDropdownItems(),
                             ),
                           ),
-                          hint: Text('タンクを選択'),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedTank = newValue;
-                              // 選択変更時にリセット
-                              _capacityResult = null;
-                              _measurementResult = null;
-                            });
-                          },
-                          items: _availableTanks.map<DropdownMenuItem<String>>((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value),
-                            );
-                          }).toList(),
-                        ),
+                        ],
+                      ),
+                      // Add "Show categorized view" button
+                      TextButton.icon(
+                        icon: Icon(Icons.category),
+                        label: Text('カテゴリー別にタンクを表示'),
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(20))
+                            ),
+                            builder: (context) => _buildCategorizedTankSelector(),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -221,6 +306,189 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
                 ),
               ],
             ),
+    );
+  }
+  
+  // Build dropdown menu items with category headers
+  List<DropdownMenuItem<String>> _buildDropdownItems() {
+    List<DropdownMenuItem<String>> items = [];
+    
+    // Add items for each category
+    for (var category in _categories) {
+      // Add category header if it has tanks
+      final tanksInCategory = _categoryTanks[category.name] ?? [];
+      if (tanksInCategory.isNotEmpty) {
+        items.add(
+          DropdownMenuItem<String>(
+            enabled: false,
+            child: Text(
+              category.name,
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            value: '${category.name}_header', // Dummy value, not selectable
+          )
+        );
+        
+        // Add tanks in this category
+        for (var tankNumber in tanksInCategory) {
+          final cleanNumber = _cleanTankNumber(tankNumber);
+          bool isLessProminent = TankCategories.isLessProminentTank(cleanNumber);
+          
+          items.add(
+            DropdownMenuItem<String>(
+              value: tankNumber,
+              child: Text(
+                tankNumber, // タンク番号をそのまま表示
+                style: TextStyle(
+                  color: isLessProminent ? Colors.grey : Colors.black,
+                  fontStyle: isLessProminent ? FontStyle.italic : FontStyle.normal,
+                ),
+              ),
+            )
+          );
+        }
+        
+        // Add divider after category if not the last one
+        if (category != _categories.last) {
+          items.add(
+            DropdownMenuItem<String>(
+              enabled: false,
+              child: Divider(height: 1),
+              value: '${category.name}_divider', // Dummy value, not selectable
+            )
+          );
+        }
+      }
+    }
+    
+    return items;
+  }
+  
+  // Build categorized tank selector in bottom sheet
+  Widget _buildCategorizedTankSelector() {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Container(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'タンク選択',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: _categories.length,
+                  itemBuilder: (context, index) {
+                    final category = _categories[index];
+                    final tanks = _categoryTanks[category.name] ?? [];
+                    
+                    // Skip empty categories
+                    if (tanks.isEmpty) return SizedBox.shrink();
+                    
+                    final isExpanded = _expandedCategories[category.name] ?? false;
+                    
+                    return Card(
+                      margin: EdgeInsets.only(bottom: 8),
+                      child: Column(
+                        children: [
+                          // Category header (tappable to expand/collapse)
+                          ListTile(
+                            title: Text(
+                              category.name,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: category.color ?? Theme.of(context).primaryColor,
+                              ),
+                            ),
+                            trailing: Icon(
+                              isExpanded ? Icons.expand_less : Icons.expand_more,
+                            ),
+                            onTap: () => _toggleCategory(category.name),
+                          ),
+                          
+                          // Tank list (if expanded)
+                          if (isExpanded)
+                            Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: tanks.map((tankNumber) {
+                                  final isSelected = tankNumber == _selectedTank;
+                                  final isLessProminent = TankCategories.isLessProminentTank(_cleanTankNumber(tankNumber));
+                                  
+                                  return InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedTank = tankNumber;
+                                        _capacityResult = null;
+                                        _measurementResult = null;
+                                      });
+                                      Navigator.pop(context); // Close the modal
+                                    },
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: isSelected 
+                                          ? (category.color ?? Theme.of(context).primaryColor) 
+                                          : isLessProminent 
+                                            ? Colors.grey[200] 
+                                            : Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: isSelected 
+                                            ? (category.color ?? Theme.of(context).primaryColor) 
+                                            : Colors.grey[300]!,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        tankNumber, // タンク番号をそのまま表示
+                                        style: TextStyle(
+                                          color: isSelected 
+                                            ? Colors.white 
+                                            : isLessProminent 
+                                              ? Colors.grey[600] 
+                                              : Colors.black,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
   

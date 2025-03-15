@@ -3,6 +3,8 @@ import '../services/csv_service.dart';
 import '../services/dilution_service.dart';
 import '../models/dilution_result.dart';
 import '../models/dilution_plan.dart';
+import '../widgets/main_drawer.dart';
+import '../models/tank_category.dart';
 
 class DilutionCalculatorScreen extends StatefulWidget {
   final DilutionPlan? planToEdit; // 編集対象の計画（nullの場合は新規作成）
@@ -665,88 +667,175 @@ class _DilutionCalculatorScreenState extends State<DilutionCalculatorScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? '割水計画を編集' : '割水計算'),
-        actions: [
-          Builder(
-            builder: (context) => IconButton(
-              icon: Icon(Icons.menu),
-              onPressed: () => Scaffold.of(context).openEndDrawer(),
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(_isEdit ? '割水計画を編集' : '割水計算'),
+    ),
+    endDrawer: MainDrawer(), // Add the shared drawer
+    body: _isLoading
+        ? Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildTankSelector(),
+                  SizedBox(height: 16),
+                  _buildInitialInfoCard(),
+                  SizedBox(height: 16),
+                  _buildAlcoholInfoCard(),
+                  SizedBox(height: 16),
+                  _buildOptionalInfoCard(),
+                  SizedBox(height: 24),
+                  _buildActionButtons(),
+                  SizedBox(height: 24),
+                  if (_isDilutionCalculating)
+                    Center(child: CircularProgressIndicator())
+                  else if (_dilutionResult != null)
+                    _buildResultCard(),
+                ],
+              ),
             ),
+          ),
+  );
+}
+
+  
+  Widget _buildTankSelector() {
+  // Organize tanks into categories for selection
+  List<DropdownMenuItem<String>> tankItems = [];
+  
+  // Define categories
+  List<TankCategory> categories = TankCategories.getCategories();
+  
+  // Map of tanks by category
+  Map<String, List<String>> tanksByCategory = {};
+  
+  // Initialize categories
+  for (var category in categories) {
+    tanksByCategory[category.name] = [];
+  }
+  
+  // Assign tanks to categories
+  for (var tank in _availableTanks) {
+    bool assigned = false;
+    
+    for (var category in categories.where((c) => c.name != 'その他')) {
+      if (category.tankNumbers.contains(tank)) {
+        tanksByCategory[category.name]!.add(tank);
+        assigned = true;
+        break;
+      }
+    }
+    
+    if (!assigned) {
+      // Add to "Others" category
+      tanksByCategory['その他']!.add(tank);
+    }
+  }
+  
+  // Build dropdown items with categories
+  for (var category in categories) {
+    var tanksInCategory = tanksByCategory[category.name] ?? [];
+    
+    // Skip empty categories
+    if (tanksInCategory.isEmpty) continue;
+    
+    // Sort tanks numerically
+    tanksInCategory.sort((a, b) {
+      int? numA = int.tryParse(a);
+      int? numB = int.tryParse(b);
+      
+      if (numA != null && numB != null) {
+        return numA.compareTo(numB);
+      }
+      
+      return a.compareTo(b);
+    });
+    
+    // Add category header
+    tankItems.add(
+      DropdownMenuItem<String>(
+        enabled: false,
+        child: Text(
+          category.name,
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        value: 'header_${category.name}',
+      )
+    );
+    
+    // Add tanks in this category
+    for (var tank in tanksInCategory) {
+      bool isLessProminent = TankCategories.isLessProminentTank(tank);
+      
+      tankItems.add(
+        DropdownMenuItem<String>(
+          value: tank,
+          child: Text(
+            'No.$tank',
+            style: TextStyle(
+              color: isLessProminent ? Colors.grey : Colors.black,
+              fontStyle: isLessProminent ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
+        )
+      );
+    }
+    
+    // Add divider if not the last category
+    if (category != categories.last) {
+      tankItems.add(
+        DropdownMenuItem<String>(
+          enabled: false,
+          child: Divider(height: 1),
+          value: 'divider_${category.name}',
+        )
+      );
+    }
+  }
+  
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'タンク選択',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedTank,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'タンク番号',
+              hintText: 'タンクを選択してください',
+              prefixIcon: Icon(Icons.wine_bar),
+            ),
+            items: tankItems,
+            onChanged: (value) {
+              setState(() {
+                _selectedTank = value;
+                // リセット
+                _dilutionResult = null;
+              });
+            },
           ),
         ],
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildTankSelector(),
-                    SizedBox(height: 16),
-                    _buildInitialInfoCard(),
-                    SizedBox(height: 16),
-                    _buildAlcoholInfoCard(),
-                    SizedBox(height: 16),
-                    _buildOptionalInfoCard(),
-                    SizedBox(height: 24),
-                    _buildActionButtons(),
-                    SizedBox(height: 24),
-                    if (_isDilutionCalculating)
-                      Center(child: CircularProgressIndicator())
-                    else if (_dilutionResult != null)
-                      _buildResultCard(),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-  
-  Widget _buildTankSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'タンク選択',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedTank,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: 'タンク番号',
-                hintText: 'タンクを選択してください',
-                prefixIcon: Icon(Icons.wine_bar),
-              ),
-              items: _availableTanks.map((tank) => DropdownMenuItem(
-                value: tank,
-                child: Text(tank),
-              )).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedTank = value;
-                  // リセット
-                  _dilutionResult = null;
-                });
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    ),
+  );
+}
   
   Widget _buildInitialInfoCard() {
     return Card(

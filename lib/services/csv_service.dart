@@ -4,7 +4,25 @@ import '../models/tank_data.dart';
 import '../models/measurement_result.dart';
 
 class CsvService {
-  // 横長CSVを読み込むための改良版パーサー
+  String _cleanTankNumber(String tankNumber) {
+  if (tankNumber == "仕込水タンク") return tankNumber;
+  
+  // 正規表現パターンを修正
+  // 問題：(?i)No\.|N0\. が無効な正規表現パターン
+  
+  // 修正方法1: 2つの別々のreplaceAllを使用
+  String cleaned = tankNumber
+      .replaceAll(RegExp(r'(?i)No\.'), '')
+      .replaceAll(RegExp(r'N0\.'), '')
+      .trim();
+  
+  // または修正方法2: グループ化して正しい正規表現パターンを使用
+  // String cleaned = tankNumber.replaceAll(RegExp(r'(?i)(No\.|N0\.)'), '').trim();
+  
+  return cleaned;
+}
+  
+  // 横長CSVを読み込むための改良版パーサー - 元のコードをそのまま維持
   Future<List<TankData>> loadTankData() async {
     try {
       // アセットからCSVファイルをバイトとして読み込んでUTF-8でデコード
@@ -87,7 +105,7 @@ class CsvService {
     }
   }
   
-  // 利用可能なタンク番号の一覧を取得
+  // 利用可能なタンク番号の一覧を取得 - 元のコードを維持
   Future<List<String>> getAvailableTankNumbers() async {
     final allData = await loadTankData();
     final Set<String> tankNumbers = {};
@@ -96,10 +114,11 @@ class CsvService {
       tankNumbers.add(data.tankNumber);
     }
     
+    // 元のソートロジックを維持
     return tankNumbers.toList()..sort();
   }
   
-  // 特定のタンク番号のデータを取得
+  // 特定のタンク番号のデータを取得 - 元のコードを維持
   Future<List<TankData>> getDataForTank(String tankNumber) async {
     final allData = await loadTankData();
     return allData.where((data) => data.tankNumber == tankNumber).toList();
@@ -276,98 +295,98 @@ class CsvService {
       isExactMatch: false,
     );
   }
+  
   // 計算されたDilutionResultを元に最適な近似値を取得
-  // 計算されたDilutionResultを元に最適な近似値を取得
-Future<List<Map<String, double>>> findNearestPairsForDilution(String tankNumber, double targetVolume) async {
-  final tankData = await getDataForTank(tankNumber);
-  if (tankData.isEmpty) return [];
-  
-  // 容量でソート
-  tankData.sort((a, b) => a.capacity.compareTo(b.capacity));
-  
-  // 完全一致を確認
-  bool hasExactMatch = tankData.any((data) => data.capacity == targetVolume);
-  
-  // 結果リスト
-  List<Map<String, double>> result = [];
-  
-  if (hasExactMatch) {
-    // 完全一致がある場合、その値と前後の値を追加（最大3つ）
-    TankData? lowerData;
-    TankData? exactData;
-    TankData? upperData;
+  Future<List<Map<String, double>>> findNearestPairsForDilution(String tankNumber, double targetVolume) async {
+    final tankData = await getDataForTank(tankNumber);
+    if (tankData.isEmpty) return [];
     
-    for (int i = 0; i < tankData.length; i++) {
-      if (tankData[i].capacity == targetVolume) {
-        exactData = tankData[i];
-        
-        // 一つ前の値を追加
-        if (i > 0) {
-          lowerData = tankData[i - 1];
+    // 容量でソート
+    tankData.sort((a, b) => a.capacity.compareTo(b.capacity));
+    
+    // 完全一致を確認
+    bool hasExactMatch = tankData.any((data) => data.capacity == targetVolume);
+    
+    // 結果リスト
+    List<Map<String, double>> result = [];
+    
+    if (hasExactMatch) {
+      // 完全一致がある場合、その値と前後の値を追加（最大3つ）
+      TankData? lowerData;
+      TankData? exactData;
+      TankData? upperData;
+      
+      for (int i = 0; i < tankData.length; i++) {
+        if (tankData[i].capacity == targetVolume) {
+          exactData = tankData[i];
+          
+          // 一つ前の値を追加
+          if (i > 0) {
+            lowerData = tankData[i - 1];
+          }
+          // 一つ後の値を追加
+          if (i < tankData.length - 1) {
+            upperData = tankData[i + 1];
+          }
+          break;
         }
-        // 一つ後の値を追加
-        if (i < tankData.length - 1) {
-          upperData = tankData[i + 1];
+      }
+      
+      if (lowerData != null) {
+        result.add({
+          'capacity': lowerData.capacity,
+          'measurement': lowerData.measurement
+        });
+      }
+      
+      if (exactData != null) {
+        result.add({
+          'capacity': exactData.capacity,
+          'measurement': exactData.measurement
+        });
+      }
+      
+      if (upperData != null) {
+        result.add({
+          'capacity': upperData.capacity,
+          'measurement': upperData.measurement
+        });
+      }
+    } else {
+      // 完全一致がない場合、最も近い上下の値を追加（最大2つ）
+      TankData? lowerData;
+      TankData? upperData;
+      
+      for (int i = 0; i < tankData.length; i++) {
+        if (tankData[i].capacity > targetVolume) {
+          if (i > 0) {
+            lowerData = tankData[i - 1];
+          }
+          upperData = tankData[i];
+          break;
         }
-        break;
+      }
+      
+      // 全てのデータがtargetVolumeより小さい場合
+      if (upperData == null && tankData.isNotEmpty) {
+        lowerData = tankData.last;
+      }
+      
+      if (lowerData != null) {
+        result.add({
+          'capacity': lowerData.capacity,
+          'measurement': lowerData.measurement
+        });
+      }
+      
+      if (upperData != null) {
+        result.add({
+          'capacity': upperData.capacity,
+          'measurement': upperData.measurement
+        });
       }
     }
     
-    if (lowerData != null) {
-      result.add({
-        'capacity': lowerData.capacity,
-        'measurement': lowerData.measurement
-      });
-    }
-    
-    if (exactData != null) {
-      result.add({
-        'capacity': exactData.capacity,
-        'measurement': exactData.measurement
-      });
-    }
-    
-    if (upperData != null) {
-      result.add({
-        'capacity': upperData.capacity,
-        'measurement': upperData.measurement
-      });
-    }
-  } else {
-    // 完全一致がない場合、最も近い上下の値を追加（最大2つ）
-    TankData? lowerData;
-    TankData? upperData;
-    
-    for (int i = 0; i < tankData.length; i++) {
-      if (tankData[i].capacity > targetVolume) {
-        if (i > 0) {
-          lowerData = tankData[i - 1];
-        }
-        upperData = tankData[i];
-        break;
-      }
-    }
-    
-    // 全てのデータがtargetVolumeより小さい場合
-    if (upperData == null && tankData.isNotEmpty) {
-      lowerData = tankData.last;
-    }
-    
-    if (lowerData != null) {
-      result.add({
-        'capacity': lowerData.capacity,
-        'measurement': lowerData.measurement
-      });
-    }
-    
-    if (upperData != null) {
-      result.add({
-        'capacity': upperData.capacity,
-        'measurement': upperData.measurement
-      });
-    }
+    return result;
   }
-  
-  return result;
-}
 }

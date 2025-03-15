@@ -1,8 +1,9 @@
+// lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import '../models/dilution_plan.dart';
 import '../services/dilution_service.dart';
 import '../widgets/task_category_card.dart';
-
+import '../widgets/main_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -61,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('相原酒造タンク管理'),
       ),
-      endDrawer: _buildDrawer(),
+      endDrawer: MainDrawer(),
       body: _isLoading 
         ? Center(child: CircularProgressIndicator())
         : RefreshIndicator(
@@ -85,122 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
   
-  Widget _buildDrawer() {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '相原酒造タンク管理',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '製造工程管理アプリ',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _buildDrawerItem(
-            icon: Icons.table_chart,
-            title: '早見表',
-            onTap: () {
-              Navigator.pushNamed(context, '/quick-reference').then((_) => _loadActivePlans());
-            },
-          ),
-          ExpansionTile(
-            leading: Icon(Icons.water_drop),
-            title: Text('蔵出し'),
-            children: [
-              _buildDrawerNestedItem(
-                title: '蔵出し計画',
-                onTap: () {
-                  Navigator.pushNamed(context, '/shipping-plans').then((_) => _loadActivePlans());
-                },
-              ),
-              _buildDrawerNestedItem(
-                title: '割水計算',
-                onTap: () {
-                  Navigator.pushNamed(context, '/dilution-calculator').then((_) => _loadActivePlans());
-                },
-              ),
-              _buildDrawerNestedItem(
-                title: '割水計画',
-                onTap: () {
-                  Navigator.pushNamed(context, '/dilution-plans').then((_) => _loadActivePlans());
-                },
-              ),
-            ],
-          ),
-          _buildDrawerItem(
-            icon: Icons.liquor,
-            title: '瓶詰め',
-            onTap: () => Navigator.pushNamed(context, '/bottling'),
-          ),
-          _buildDrawerItem(
-            icon: Icons.filter_alt,
-            title: 'ろ過',
-            onTap: () => Navigator.pushNamed(context, '/filtering'),
-          ),
-          _buildDrawerItem(
-            icon: Icons.whatshot,
-            title: '火入れ',
-            onTap: () => Navigator.pushNamed(context, '/pasteurization'),
-          ),
-          _buildDrawerItem(
-            icon: Icons.science,
-            title: '調合',
-            onTap: () => Navigator.pushNamed(context, '/blending'),
-          ),
-          Divider(),
-          _buildDrawerItem(
-            icon: Icons.settings,
-            title: '設定',
-            onTap: () => Navigator.pushNamed(context, '/settings'),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildDrawerItem({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      onTap: onTap,
-    );
-  }
-  
-  Widget _buildDrawerNestedItem({
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      contentPadding: EdgeInsets.only(left: 72, right: 16),
-      title: Text(title),
-      onTap: onTap,
-    );
-  }
-
   Widget _buildHomeContent() {
     // Group active plans by category
     final Map<String, List<DilutionPlan>> plansByCategory = {

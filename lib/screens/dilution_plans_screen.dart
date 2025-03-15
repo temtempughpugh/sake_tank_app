@@ -1,7 +1,9 @@
+// lib/screens/dilution_plans_screen.dart
 import 'package:flutter/material.dart';
 import '../models/dilution_plan.dart';
 import '../services/dilution_service.dart';
 import '../screens/dilution_calculator_screen.dart';
+import '../widgets/main_drawer.dart';
 
 class DilutionPlansScreen extends StatefulWidget {
   @override
@@ -411,6 +413,7 @@ class _DilutionPlansScreenState extends State<DilutionPlansScreen> with SingleTi
           ],
         ),
       ),
+      endDrawer: MainDrawer(), // Use the shared drawer
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : TabBarView(
