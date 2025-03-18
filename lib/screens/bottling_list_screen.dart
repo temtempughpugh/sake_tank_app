@@ -4,7 +4,6 @@ import '../services/bottling_service.dart';
 import '../widgets/main_drawer.dart';
 import 'bottling_screen.dart';
 import 'brewing_record_screen.dart';
-import 'package:intl/intl.dart'; // 日付フォーマット用
 
 class BottlingListScreen extends StatefulWidget {
   @override

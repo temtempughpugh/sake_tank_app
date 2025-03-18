@@ -1,6 +1,3 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // @requiredアノテーション用
-
 class BottlingInfo {
   final String id;
   final DateTime date;
@@ -164,14 +161,14 @@ class BottleType {
   }
   
   // カスタム瓶作成メソッド
-  static BottleType custom(String name, double volume, int bottlesPerCase) {
-    return BottleType(
-      name: name,
-      volumeInMl: volume,
-      bottlesPerCase: bottlesPerCase,
-      isCustom: true,
-    );
-  }
+  static BottleType custom(double volume, int bottlesPerCase) {
+  return BottleType(
+    name: 'カスタム (${volume.toInt()}ml)',
+    volumeInMl: volume,
+    bottlesPerCase: bottlesPerCase,
+    isCustom: true,
+  );
+}
   
   // JSON変換メソッド
   Map<String, dynamic> toJson() {
@@ -191,4 +188,20 @@ class BottleType {
       isCustom: json['isCustom'],
     );
   }
+  @override
+  bool operator ==(Object other) =>
+    identical(this, other) ||
+    other is BottleType &&
+        runtimeType == other.runtimeType &&
+        name == other.name &&
+        volumeInMl == other.volumeInMl &&
+        bottlesPerCase == other.bottlesPerCase &&
+        isCustom == other.isCustom;
+
+  @override
+  int get hashCode =>
+    name.hashCode ^
+    volumeInMl.hashCode ^
+    bottlesPerCase.hashCode ^
+    isCustom.hashCode;
 }

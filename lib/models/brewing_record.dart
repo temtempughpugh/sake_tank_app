@@ -1,6 +1,3 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // @requiredアノテーション用
-
 class BrewingRecord {
   final String id;
   final String bottlingInfoId; // 関連する瓶詰め情報ID

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/bottling_info.dart';
 import '../services/bottling_service.dart';
 import '../widgets/main_drawer.dart';
-import 'package:flutter/services.dart'; // 入力フォーマッティング用
-import 'dart:math'; 
 
 class BottlingScreen extends StatefulWidget {
   final BottlingInfo? bottlingToEdit; // 編集用（nullなら新規作成）
@@ -190,14 +188,6 @@ class _BottlingScreenState extends State<BottlingScreen> {
                 
                 // カスタム瓶情報入力
                 if (selectedType == null) ...[
-                  SizedBox(height: 16),
-                  TextField(
-                    decoration: InputDecoration(
-                      labelText: 'カスタム瓶名',
-                      hintText: '例: 180ml',
-                    ),
-                    onChanged: (value) => customName = value,
-                  ),
                   SizedBox(height: 8),
                   TextField(
                     decoration: InputDecoration(
@@ -259,12 +249,12 @@ class _BottlingScreenState extends State<BottlingScreen> {
             ElevatedButton(
               onPressed: () {
                 // 有効性チェック
-                if ((selectedType != null || (customName != null && customVolume != null)) &&
+                if ((selectedType != null || (customVolume != null)) &&
                     caseCount >= 0 && looseCount >= 0 && 
                     (caseCount > 0 || looseCount > 0)) {
                   
                   final bottleType = selectedType ?? 
-                    BottleType.custom(customName!, customVolume!, bottlesPerCase);
+                    BottleType.custom(customVolume!, bottlesPerCase);
                   
                   final entry = BottleEntry(
                     bottleType: bottleType,
@@ -545,10 +535,43 @@ class _BottlingScreenState extends State<BottlingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('計算結果', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            
             Divider(),
             Text('総本数: $totalBottles 本'),
             Text('総容量: ${totalVolume.toStringAsFixed(1)} L'),
             Text('詰残り換算: ${(remainingVolume * 1.8).toStringAsFixed(1)} L'),
+            // 瓶種ごとの小計を表示（既存のDivider直前に追加）
+if (_bottleEntries.isNotEmpty) ...[
+  Text('瓶種別集計:', style: TextStyle(fontWeight: FontWeight.bold)),
+  SizedBox(height: 8),
+  
+  ...List.generate(_bottleEntries.length, (index) {
+    final entry = _bottleEntries[index];
+    final bottleAlcohol = entry.totalVolume * alcohol / 100;
+    
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text('${entry.bottleType.name}:'),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text('${entry.totalBottles}本 (${entry.totalVolume.toStringAsFixed(1)}L)'),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text('純AL: ${bottleAlcohol.toStringAsFixed(2)}L'),
+          ),
+        ],
+      ),
+    );
+  }),
+  
+  Divider(),
+],
             Divider(),
             Text('合計容量: ${totalWithRemaining.toStringAsFixed(1)} L', 
                 style: TextStyle(fontWeight: FontWeight.bold)),
