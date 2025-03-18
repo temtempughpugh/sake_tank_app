@@ -97,31 +97,37 @@ class _DilutionCalculatorScreenState extends State<DilutionCalculatorScreen> {
   }
   
   Future<void> _loadTanks() async {
+  setState(() {
+    _isLoading = true;
+  });
+  
+  try {
+    final tanks = await _csvService.getAvailableTankNumbers();
     setState(() {
-      _isLoading = true;
+      _availableTanks = tanks;
+      
+      // 蔵出しタンクを優先的に選択
+     final releaseSourceTanks = tanks.where((tank) => 
+  TankCategories.getCategoryForTank(tank).name == '蔵出しタンク').toList();
+
+// 条件文も変更
+if (_isEdit && widget.planToEdit != null) {
+  _selectedTank = widget.planToEdit!.tankNumber;
+} else if (releaseSourceTanks.isNotEmpty) {
+  _selectedTank = releaseSourceTanks.first;
+} else if (tanks.isNotEmpty) {
+  _selectedTank = tanks.first;
+}
+      
+      _isLoading = false;
     });
-    
-    try {
-      final tanks = await _csvService.getAvailableTankNumbers();
-      setState(() {
-        _availableTanks = tanks;
-        
-        // Select tank based on editing or default
-        if (_isEdit && widget.planToEdit != null) {
-          _selectedTank = widget.planToEdit!.tankNumber;
-        } else if (tanks.isNotEmpty) {
-          _selectedTank = tanks.first;
-        }
-        
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      _showErrorDialog('タンクデータの読み込みに失敗しました: $e');
-    }
+  } catch (e) {
+    setState(() {
+      _isLoading = false;
+    });
+    _showErrorDialog('タンクデータの読み込みに失敗しました: $e');
   }
+}
   
   // 計算関連のメソッド
   void _calculateVolumeFromMeasurement() async {
@@ -177,59 +183,94 @@ class _DilutionCalculatorScreenState extends State<DilutionCalculatorScreen> {
   }
   
   void _calculateDilution() async {
-    if (_selectedTank == null) {
-      _showErrorDialog('タンクを選択してください');
+  if (_selectedTank == null) {
+    _showErrorDialog('タンクを選択してください');
+    return;
+  }
+  
+  final initialVolume = double.tryParse(_initialVolumeController.text);
+  if (initialVolume == null) {
+    _showErrorDialog('有効な初期容量（数値）を入力してください');
+    return;
+  }
+  
+  final initialAlcohol = double.tryParse(_initialAlcoholController.text);
+  if (initialAlcohol == null) {
+    _showErrorDialog('有効な初期アルコール度数（数値）を入力してください');
+    return;
+  }
+  
+  final targetAlcohol = double.tryParse(_targetAlcoholController.text);
+  if (targetAlcohol == null) {
+    _showErrorDialog('有効な目標アルコール度数（数値）を入力してください');
+    return;
+  }
+  
+  if (targetAlcohol >= initialAlcohol) {
+    _showErrorDialog('目標アルコール度数は初期アルコール度数より低くする必要があります');
+    return;
+  }
+  
+  // タンクの容量範囲をチェック
+  try {
+    // タンクの最大容量を取得
+    final maxCapacity = await _csvService.getMaxCapacity(_selectedTank!);
+    if (maxCapacity != null && initialVolume > maxCapacity) {
+      _showErrorDialog('入力された容量(${initialVolume.toStringAsFixed(1)}L)はタンク${_selectedTank}の最大容量(${maxCapacity.toStringAsFixed(1)}L)を超えています');
       return;
     }
     
-    final initialVolume = double.tryParse(_initialVolumeController.text);
-    if (initialVolume == null) {
-      _showErrorDialog('有効な初期容量（数値）を入力してください');
-      return;
+    // タンクのデータを取得して最小容量をチェック
+    final tankData = await _csvService.getDataForTank(_selectedTank!);
+    if (tankData.isNotEmpty) {
+      tankData.sort((a, b) => a.capacity.compareTo(b.capacity));
+      final minCapacity = tankData.first.capacity;
+      
+      if (initialVolume < minCapacity) {
+        _showErrorDialog('入力された容量(${initialVolume.toStringAsFixed(1)}L)はタンク${_selectedTank}の最小容量(${minCapacity.toStringAsFixed(1)}L)未満です');
+        return;
+      }
     }
     
-    final initialAlcohol = double.tryParse(_initialAlcoholController.text);
-    if (initialAlcohol == null) {
-      _showErrorDialog('有効な初期アルコール度数（数値）を入力してください');
-      return;
+    // 計算結果により水を追加した後の容量が最大容量を超えないかチェック
+    if (maxCapacity != null) {
+      // 割水後の最終容量を仮計算
+      final estimatedFinalVolume = initialVolume * (initialAlcohol / targetAlcohol);
+      if (estimatedFinalVolume > maxCapacity) {
+        _showErrorDialog('計算される割水後の容量(${estimatedFinalVolume.toStringAsFixed(1)}L)がタンク${_selectedTank}の最大容量(${maxCapacity.toStringAsFixed(1)}L)を超えています\n\n目標アルコール度数を下げるか、初期容量を減らしてください');
+        return;
+      }
     }
-    
-    final targetAlcohol = double.tryParse(_targetAlcoholController.text);
-    if (targetAlcohol == null) {
-      _showErrorDialog('有効な目標アルコール度数（数値）を入力してください');
-      return;
-    }
-    
-    if (targetAlcohol >= initialAlcohol) {
-      _showErrorDialog('目標アルコール度数は初期アルコール度数より低くする必要があります');
-      return;
-    }
+  } catch (e) {
+    print('容量チェック中にエラーが発生しました: $e');
+    // エラーが発生してもとりあえず計算は続行
+  }
+  
+  setState(() {
+    _isDilutionCalculating = true;
+    _dilutionResult = null;
+    _selectedFinalVolume = null;
+  });
+  
+  try {
+    final result = await _dilutionService.calculateDilution(
+      tankNumber: _selectedTank!,
+      initialVolume: initialVolume,
+      initialAlcoholPercentage: initialAlcohol,
+      targetAlcoholPercentage: targetAlcohol,
+    );
     
     setState(() {
-      _isDilutionCalculating = true;
-      _dilutionResult = null;
-      _selectedFinalVolume = null;
+      _dilutionResult = result;
+      _isDilutionCalculating = false;
     });
-    
-    try {
-      final result = await _dilutionService.calculateDilution(
-        tankNumber: _selectedTank!,
-        initialVolume: initialVolume,
-        initialAlcoholPercentage: initialAlcohol,
-        targetAlcoholPercentage: targetAlcohol,
-      );
-      
-      setState(() {
-        _dilutionResult = result;
-        _isDilutionCalculating = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isDilutionCalculating = false;
-      });
-      _showErrorDialog('計算中にエラーが発生しました: $e');
-    }
+  } catch (e) {
+    setState(() {
+      _isDilutionCalculating = false;
+    });
+    _showErrorDialog('計算中にエラーが発生しました: $e');
   }
+}
   
   // 最終容量を選択（近似値から）
   Future<void> _selectFinalVolume(double volume) async {
@@ -651,20 +692,26 @@ class _DilutionCalculatorScreenState extends State<DilutionCalculatorScreen> {
   }
   
   void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('エラー'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK'),
-          ),
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red),
+          SizedBox(width: 8),
+          Text('エラー', style: TextStyle(color: Colors.red)),
         ],
       ),
-    );
-  }
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
 
   @override
 Widget build(BuildContext context) {
@@ -743,15 +790,28 @@ Widget build(BuildContext context) {
     // Skip empty categories
     if (tanksInCategory.isEmpty) continue;
     
-    // Sort tanks numerically
+    // タンク番号を数値順にソート
     tanksInCategory.sort((a, b) {
-      int? numA = int.tryParse(a);
-      int? numB = int.tryParse(b);
-      
-      if (numA != null && numB != null) {
-        return numA.compareTo(numB);
+      // 特殊タンク名は最後に
+      bool aIsSpecial = a == '仕込水タンク';
+      bool bIsSpecial = b == '仕込水タンク';
+        
+      if (aIsSpecial && !bIsSpecial) return 1;
+      if (!aIsSpecial && bIsSpecial) return -1;
+        
+      // No.プレフィックスを一時的に削除して数値比較
+      String aNum = a.replaceAll(RegExp(r'No\.'), '').trim();
+      String bNum = b.replaceAll(RegExp(r'No\.'), '').trim();
+        
+      // 数値に変換して比較
+      int? aInt = int.tryParse(aNum);
+      int? bInt = int.tryParse(bNum);
+        
+      if (aInt != null && bInt != null) {
+        return aInt.compareTo(bInt);
       }
-      
+        
+      // 数値変換できなければ文字列比較
       return a.compareTo(b);
     });
     
@@ -778,7 +838,7 @@ Widget build(BuildContext context) {
         DropdownMenuItem<String>(
           value: tank,
           child: Text(
-            'No.$tank',
+            tank, // 元のタンク番号表記をそのまま使用
             style: TextStyle(
               color: isLessProminent ? Colors.grey : Colors.black,
               fontStyle: isLessProminent ? FontStyle.italic : FontStyle.normal,

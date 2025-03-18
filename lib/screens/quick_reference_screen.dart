@@ -58,16 +58,16 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
   // タンク番号のクリーニングユーティリティ
   String _cleanTankNumber(String tankNumber) {
     if (tankNumber == "仕込水タンク") return tankNumber;
-    return tankNumber.replaceAll(RegExp(r'(?i)No\.|N0\.'), '').trim();
+    return tankNumber.trim();
   }
 
   Future<void> _loadTanks() async {
-    setState(() {
-      _isLoading = true;
-    });
-    
-    try {
-      final tanks = await _csvService.getAvailableTankNumbers();
+  setState(() {
+    _isLoading = true;
+  });
+  
+  try {
+    final tanks = await _csvService.getAvailableTankNumbers();
       
       // Group tanks by category
       Map<String, List<String>> categoryTanks = {};
@@ -111,21 +111,18 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
       }
       
       setState(() {
-        _availableTanks = tanks;
-        _categoryTanks = categoryTanks;
-        _isLoading = false;
-        
-        // Set initial selected tank if available
-        if (tanks.isNotEmpty) {
-          // Try to select a commonly used tank first
-          if (tanks.any((t) => _cleanTankNumber(t) == '16')) { // 蔵出しタンク
-            _selectedTank = tanks.firstWhere((t) => _cleanTankNumber(t) == '16');
-          } else if (tanks.isNotEmpty) {
-            _selectedTank = tanks.first;
-          }
-        }
-      });
-    } catch (e) {
+      _availableTanks = tanks;
+      _categoryTanks = categoryTanks;
+      _isLoading = false;
+      
+      // 蔵出しタンクを優先的に選択
+      if (_categoryTanks['蔵出しタンク']?.isNotEmpty ?? false) {
+        _selectedTank = _categoryTanks['蔵出しタンク']!.first;
+      } else if (tanks.isNotEmpty) {
+        _selectedTank = tanks.first;
+      }
+    });
+  } catch (e) {
       setState(() {
         _isLoading = false;
       });
@@ -310,62 +307,88 @@ class _QuickReferenceScreenState extends State<QuickReferenceScreen> with Single
   }
   
   // Build dropdown menu items with category headers
-  List<DropdownMenuItem<String>> _buildDropdownItems() {
-    List<DropdownMenuItem<String>> items = [];
-    
-    // Add items for each category
-    for (var category in _categories) {
-      // Add category header if it has tanks
-      final tanksInCategory = _categoryTanks[category.name] ?? [];
-      if (tanksInCategory.isNotEmpty) {
+  // Build dropdown menu items with category headers
+List<DropdownMenuItem<String>> _buildDropdownItems() {
+  List<DropdownMenuItem<String>> items = [];
+  
+  // カテゴリ順にタンクを追加（重要な順序）
+  for (var category in _categories) {
+    // Add category header if it has tanks
+    final tanksInCategory = _categoryTanks[category.name] ?? [];
+    if (tanksInCategory.isNotEmpty) {
+      items.add(
+        DropdownMenuItem<String>(
+          enabled: false,
+          child: Text(
+            category.name,
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          value: '${category.name}_header', // Dummy value, not selectable
+        )
+      );
+      
+      // タンク番号の並び替え（カテゴリ内で）
+      var sortedTanks = List<String>.from(tanksInCategory);
+      sortedTanks.sort((a, b) {
+        // 特殊タンク名は最後に
+        bool aIsSpecial = a == '仕込水タンク';
+        bool bIsSpecial = b == '仕込水タンク';
+        
+        if (aIsSpecial && !bIsSpecial) return 1;
+        if (!aIsSpecial && bIsSpecial) return -1;
+        
+        // No.プレフィックスを一時的に削除して数値比較
+        String aNum = a.replaceAll(RegExp(r'No\.'), '').trim();
+        String bNum = b.replaceAll(RegExp(r'No\.'), '').trim();
+        
+        // 数値に変換して比較
+        int? aInt = int.tryParse(aNum);
+        int? bInt = int.tryParse(bNum);
+        
+        if (aInt != null && bInt != null) {
+          return aInt.compareTo(bInt);
+        }
+        
+        // 数値変換できなければ文字列比較
+        return a.compareTo(b);
+      });
+      
+      // Add tanks in this category
+      for (var tankNumber in sortedTanks) {
+        bool isLessProminent = TankCategories.isLessProminentTank(tankNumber);
+        
+        items.add(
+          DropdownMenuItem<String>(
+            value: tankNumber,
+            child: Text(
+              tankNumber,
+              style: TextStyle(
+                color: isLessProminent ? Colors.grey : Colors.black,
+                fontStyle: isLessProminent ? FontStyle.italic : FontStyle.normal,
+              ),
+            ),
+          )
+        );
+      }
+      
+      // Add divider after category if not the last one
+      if (category != _categories.last) {
         items.add(
           DropdownMenuItem<String>(
             enabled: false,
-            child: Text(
-              category.name,
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            value: '${category.name}_header', // Dummy value, not selectable
+            child: Divider(height: 1),
+            value: '${category.name}_divider', // Dummy value, not selectable
           )
         );
-        
-        // Add tanks in this category
-        for (var tankNumber in tanksInCategory) {
-          final cleanNumber = _cleanTankNumber(tankNumber);
-          bool isLessProminent = TankCategories.isLessProminentTank(cleanNumber);
-          
-          items.add(
-            DropdownMenuItem<String>(
-              value: tankNumber,
-              child: Text(
-                tankNumber, // タンク番号をそのまま表示
-                style: TextStyle(
-                  color: isLessProminent ? Colors.grey : Colors.black,
-                  fontStyle: isLessProminent ? FontStyle.italic : FontStyle.normal,
-                ),
-              ),
-            )
-          );
-        }
-        
-        // Add divider after category if not the last one
-        if (category != _categories.last) {
-          items.add(
-            DropdownMenuItem<String>(
-              enabled: false,
-              child: Divider(height: 1),
-              value: '${category.name}_divider', // Dummy value, not selectable
-            )
-          );
-        }
       }
     }
-    
-    return items;
   }
+  
+  return items;
+}
   
   // Build categorized tank selector in bottom sheet
   Widget _buildCategorizedTankSelector() {

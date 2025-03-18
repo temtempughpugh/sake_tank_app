@@ -4,6 +4,7 @@ import '../models/dilution_plan.dart';
 import '../services/dilution_service.dart';
 import '../screens/dilution_calculator_screen.dart';
 import '../widgets/main_drawer.dart';
+import '../models/tank_category.dart';
 
 class DilutionPlansScreen extends StatefulWidget {
   @override
@@ -492,33 +493,95 @@ class _DilutionPlansScreenState extends State<DilutionPlansScreen> with SingleTi
     );
   }
   
-  Widget _buildActivePlansList(Map<String, List<DilutionPlan>> activePlansByTank) {
-    return ListView.builder(
-      itemCount: activePlansByTank.keys.length,
-      itemBuilder: (context, index) {
-        final tankNumber = activePlansByTank.keys.elementAt(index);
-        final plans = activePlansByTank[tankNumber]!;
+  // _buildActivePlansList メソッドの修正
+Widget _buildActivePlansList(Map<String, List<DilutionPlan>> activePlansByTank) {
+  // カテゴリごとにタンクを整理
+  Map<String, List<String>> tanksByCategory = {};
+  List<TankCategory> categories = TankCategories.getCategories();
+  
+  // カテゴリごとに初期化
+  for (var category in categories) {
+    tanksByCategory[category.name] = [];
+  }
+  
+  // タンクをカテゴリに割り当て
+  for (var tankNumber in activePlansByTank.keys) {
+    var category = TankCategories.getCategoryForTank(tankNumber);
+    tanksByCategory[category.name]!.add(tankNumber);
+  }
+  
+  return ListView.builder(
+    itemCount: categories.length,
+    itemBuilder: (context, categoryIndex) {
+      final category = categories[categoryIndex];
+      final tanksInCategory = tanksByCategory[category.name] ?? [];
+      
+      // カテゴリにタンクがなければスキップ
+      if (tanksInCategory.isEmpty) {
+        return SizedBox.shrink();
+      }
+      
+      // タンク番号を数値順にソート
+      tanksInCategory.sort((a, b) {
+        // 特殊タンク名は最後に
+        bool aIsSpecial = a == '仕込水タンク';
+        bool bIsSpecial = b == '仕込水タンク';
         
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                'タンク $tankNumber',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
-                ),
+        if (aIsSpecial && !bIsSpecial) return 1;
+        if (!aIsSpecial && bIsSpecial) return -1;
+        
+        // No.プレフィックスを一時的に削除して数値比較
+        String aNum = a.replaceAll(RegExp(r'No\.'), '').trim();
+        String bNum = b.replaceAll(RegExp(r'No\.'), '').trim();
+        
+        // 数値に変換して比較
+        int? aInt = int.tryParse(aNum);
+        int? bInt = int.tryParse(bNum);
+        
+        if (aInt != null && bInt != null) {
+          return aInt.compareTo(bInt);
+        }
+        
+        // 数値変換できなければ文字列比較
+        return a.compareTo(b);
+      });
+      
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              '${category.name}',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: category.color ?? Theme.of(context).primaryColor,
               ),
             ),
-            ...plans.map((plan) => _buildPlanCard(plan)).toList(),
-          ],
-        );
-      },
-    );
-  }
+          ),
+          ...tanksInCategory.expand((tankNumber) {
+            final plans = activePlansByTank[tankNumber] ?? [];
+            return [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text(
+                  'タンク $tankNumber',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ),
+              ...plans.map((plan) => _buildPlanCard(plan)).toList(),
+            ];
+          }).toList(),
+        ],
+      );
+    },
+  );
+}
   
   Widget _buildCompletedPlansList(List<DilutionPlan> completedPlans) {
     // 完了日の新しい順にソート

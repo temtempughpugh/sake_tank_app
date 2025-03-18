@@ -7,17 +7,8 @@ class CsvService {
   String _cleanTankNumber(String tankNumber) {
   if (tankNumber == "仕込水タンク") return tankNumber;
   
-  // 正規表現パターンを修正
-  // 問題：(?i)No\.|N0\. が無効な正規表現パターン
-  
-  // 修正方法1: 2つの別々のreplaceAllを使用
-  String cleaned = tankNumber
-      .replaceAll(RegExp(r'(?i)No\.'), '')
-      .replaceAll(RegExp(r'N0\.'), '')
-      .trim();
-  
-  // または修正方法2: グループ化して正しい正規表現パターンを使用
-  // String cleaned = tankNumber.replaceAll(RegExp(r'(?i)(No\.|N0\.)'), '').trim();
+  // グループ化して正しい正規表現パターンを使用
+String cleaned = tankNumber.replaceAll(RegExp('No\\.|N0\\.', caseSensitive: false), '').trim();
   
   return cleaned;
 }

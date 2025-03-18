@@ -20,64 +20,64 @@ class TankCategory {
 // Pre-defined tank categories
 class TankCategories {
   static List<TankCategory> getCategories() {
-    return [
-      TankCategory(
-        name: '蔵出しタンク',
-        tankNumbers: ['16', '58'],
-        color: Colors.blue,
-      ),
-      TankCategory(
-        name: '貯蔵用サーマルタンク',
-        tankNumbers: ['40', '42', '87', '131', '132', '135'],
-        color: Colors.green,
-      ),
-      TankCategory(
-        name: '貯蔵用タンク(冷蔵庫A)',
-        tankNumbers: ['69', '70', '71', '72', '39', '84', '38'],
-        color: Colors.purple,
-      ),
-      TankCategory(
-        name: '貯蔵用タンク(冷蔵庫B)',
-        tankNumbers: ['86', '44', '45', '85'],
-        color: Colors.deepPurple,
-      ),
-      TankCategory(
-        name: '貯蔵用タンク',
-        tankNumbers: [
-          '102', '108', '101', '99', '31', '41', '109', '107', '100', '103', '33', '83', '15',
-          // Less prominent tanks
-          '144', '36', '37', '35', '121', '25', '34', '137',
-        ],
-        color: Colors.teal,
-      ),
-      TankCategory(
-        name: '仕込み用タンク',
-        tankNumbers: [
-          '262', '263', '264', '288', '888', '227', '226', '225', 
-          '28', '68', '62', '63', '19', '10', '18', '64', '6'
-        ],
-        color: Colors.orange,
-      ),
-      TankCategory(
-        name: '水タンク',
-        tankNumbers: ['88', '仕込水タンク'],
-        color: Colors.lightBlue,
-      ),
-      TankCategory(
-        name: 'その他',
-        tankNumbers: [], // This will be populated with any tanks not in other categories
-        color: Colors.grey,
-      ),
-    ];
-  }
+  return [
+    TankCategory(
+      name: '蔵出しタンク',
+      tankNumbers: ['No.16', 'No.58'],  // No.付きの形式で定義
+      color: Colors.blue,
+    ),
+    TankCategory(
+      name: '貯蔵用サーマルタンク',
+      tankNumbers: ['No.40', 'No.42', 'No.87', 'No.131', 'No.132', 'No.135'],
+      color: Colors.green,
+    ),
+    TankCategory(
+      name: '貯蔵用タンク(冷蔵庫A)',
+      tankNumbers: ['No.69', 'No.70', 'No.71', 'No.72', 'No.39', 'No.84', 'No.38'],
+      color: Colors.purple,
+    ),
+    TankCategory(
+      name: '貯蔵用タンク(冷蔵庫B)',
+      tankNumbers: ['No.86', 'No.44', 'No.45', 'No.85'],
+      color: Colors.deepPurple,
+    ),
+    TankCategory(
+      name: '貯蔵用タンク',
+      tankNumbers: [
+        'No.102', 'No.108', 'No.101', 'No.99', 'No.31', 'No.41', 'No.109', 'No.107', 'No.100', 'No.103', 'No.33', 'No.83', 'No.15',
+        // Less prominent tanks
+        'No.144', 'No.36', 'No.37', 'No.35', 'No.121', 'No.25', 'No.34', 'No.137',
+      ],
+      color: Colors.teal,
+    ),
+    TankCategory(
+      name: '仕込み用タンク',
+      tankNumbers: [
+        'No.262', 'No.263', 'No.264', 'No.288', 'No.888', 'No.227', 'No.226', 'No.225', 
+        'No.28', 'No.68', 'No.62', 'No.63', 'No.19', 'No.10', 'No.18', 'No.64', 'No.6'
+      ],
+      color: Colors.orange,
+    ),
+    TankCategory(
+      name: '水タンク',
+      tankNumbers: ['No.88', '仕込水タンク'],
+      color: Colors.lightBlue,
+    ),
+    TankCategory(
+      name: 'その他',
+      tankNumbers: [], // This will be populated with any tanks not in other categories
+      color: Colors.grey,
+    ),
+  ];
+}
 
   // Clean tank number for comparison - remove any "No." prefix and trim whitespace
   static String cleanTankNumber(String tankNumber) {
+    // 特殊ケースのみ例外処理
     if (tankNumber == "仕込水タンク") return tankNumber;
     
-    // 大文字小文字を区別せず、数字のゼロも考慮して No. または N0. を削除
-    String cleaned = tankNumber.replaceAll(RegExp(r'(?i)No\.|N0\.'), '').trim();
-    return cleaned;
+    // 余計な処理をせず、単にトリムするだけ
+    return tankNumber.trim();
   }
 
   // Utility method to get the category for a tank number
@@ -107,10 +107,11 @@ class TankCategories {
   }
 
   // Check if a tank is considered "less prominent"
-  static bool isLessProminentTank(String tankNumber) {
-    final lessPronimentTanks = ['25', '34', '35', '36', '37', '121', '137', '144'];
-    final cleanedTankNumber = cleanTankNumber(tankNumber);
-    
-    return lessPronimentTanks.contains(cleanedTankNumber);
-  }
+ // Check if a tank is considered "less prominent"
+static bool isLessProminentTank(String tankNumber) {
+  final lessPronimentTanks = ['No.25', 'No.34', 'No.35', 'No.36', 'No.37', 'No.121', 'No.137', 'No.144'];
+  final cleanedTankNumber = cleanTankNumber(tankNumber);
+  
+  return lessPronimentTanks.contains(cleanedTankNumber);
+}
 }
