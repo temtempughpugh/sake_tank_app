@@ -91,14 +91,15 @@ class MainDrawer extends StatelessWidget {
             ],
           ),
           _buildDrawerItem(
-            context,
-            icon: Icons.liquor,
-            title: '瓶詰め',
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushReplacementNamed(context, '/bottling');
-            },
-          ),
+  context,
+  icon: Icons.liquor,
+  title: '瓶詰め',
+  onTap: () {
+    Navigator.pop(context);
+    // 瓶詰め情報一覧画面に遷移
+    Navigator.pushReplacementNamed(context, '/bottling-list');
+  },
+),
           _buildDrawerItem(
             context,
             icon: Icons.filter_alt,

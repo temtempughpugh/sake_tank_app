@@ -5,6 +5,9 @@ import 'screens/home_screen.dart';
 import 'screens/dilution_plans_screen.dart';
 import 'screens/quick_reference_screen.dart';
 import 'screens/dilution_calculator_screen.dart';
+import 'screens/bottling_screen.dart';
+import 'screens/bottling_list_screen.dart';
+import 'screens/brewing_record_screen.dart';
 
 void main() {
   // アプリケーション初期化時には向きを固定（縦向き）
@@ -87,11 +90,14 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => HomeScreen(),
-        '/quick-reference': (context) => QuickReferenceScreen(),
-        '/dilution-calculator': (context) => DilutionCalculatorScreen(),
-        '/dilution-plans': (context) => DilutionPlansScreen(),
-        // Additional routes will be added as we implement other screens
+  '/': (context) => HomeScreen(),
+  '/quick-reference': (context) => QuickReferenceScreen(),
+  '/dilution-calculator': (context) => DilutionCalculatorScreen(),
+  '/dilution-plans': (context) => DilutionPlansScreen(),
+  
+  // 新しいルートを追加
+  '/bottling': (context) => BottlingScreen(),
+  '/bottling-list': (context) => BottlingListScreen(),
       },
     );
   }
