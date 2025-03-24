@@ -7,13 +7,12 @@ class DilutionResult {
   final double finalMeasurement;
   
   // 近似値リストを容量と検尺のペアで保持
-  final List<Map<String, double>> nearestAvailablePairs; // 新しく追加
-  final List<double> nearestAvailableVolumes; // 互換性のために残す
+  final List<Map<String, double>> nearestAvailablePairs;
   
   final bool isExactMatch;
   final double? adjustedWaterToAdd;
   final double? adjustedFinalVolume;
-  final double? adjustedFinalMeasurement; // 新しく追加
+  final double? adjustedFinalMeasurement;
   final double? adjustedAlcoholPercentage;
 
   DilutionResult({
@@ -23,8 +22,7 @@ class DilutionResult {
     required this.waterToAdd,
     required this.finalVolume,
     required this.finalMeasurement,
-    required this.nearestAvailableVolumes,
-    this.nearestAvailablePairs = const [], // 初期値を空リストに
+    this.nearestAvailablePairs = const [],
     required this.isExactMatch,
     this.adjustedWaterToAdd,
     this.adjustedFinalVolume,

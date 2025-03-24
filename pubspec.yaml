@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  provider: ^6.0.0
   cupertino_icons: ^1.0.2
   # 文字エンコーディング対応用
   # charset_converter: ^2.1.1  # 必要に応じてコメントを外してください
@@ -16,6 +17,7 @@ dependencies:
   path_provider: ^2.1.1
   shared_preferences: ^2.2.0  # 追加: 割水計画の保存用
   intl: ^0.18.0
+  flutter_lints: ^2.0.0
 
 flutter:
   uses-material-design: true

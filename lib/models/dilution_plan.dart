@@ -1,3 +1,4 @@
+/// 割水計画モデル
 class DilutionPlan {
   final String id;
   final String tankNumber;
@@ -31,7 +32,18 @@ class DilutionPlan {
     this.isCompleted = false,
   });
 
-  // Create a copy with some fields updated
+  /// 表示名を取得
+  String get displayName => sakeName.isNotEmpty ? sakeName : 'タンク $tankNumber';
+  
+  /// 計画が古いかどうか（7日以上経過で未完了）
+  bool get isOverdue {
+    if (isCompleted) return false;
+    final now = DateTime.now();
+    final difference = now.difference(plannedDate).inDays;
+    return difference > 7;
+  }
+
+  /// コピーを作成して一部のフィールドを更新
   DilutionPlan copyWith({
     String? id,
     String? tankNumber,
@@ -66,7 +78,7 @@ class DilutionPlan {
     );
   }
 
-  // Convert to and from JSON for storage
+  /// JSONに変換
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -86,6 +98,7 @@ class DilutionPlan {
     };
   }
 
+  /// JSONから作成
   factory DilutionPlan.fromJson(Map<String, dynamic> json) {
     return DilutionPlan(
       id: json['id'],
