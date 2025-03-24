@@ -326,100 +326,59 @@ class TankDataService {
   
   /// 希望容量に最も近い利用可能な容量-検尺ペアを探す
   Future<List<Map<String, double>>> findNearestCapacityMeasurementPairs(
-      String tankNumber, double targetCapacity) async {
-    final tank = await getTankData(tankNumber);
-    if (tank == null || tank.measurementData.isEmpty) return [];
-    
-    // 容量でソート
-    tank.measurementData.sort((a, b) => a.capacity.compareTo(b.capacity));
-    
-    // 完全一致を確認
-    bool hasExactMatch = tank.measurementData.any((data) => data.capacity == targetCapacity);
-    
-    // 結果リスト
-    List<Map<String, double>> result = [];
-    
-    if (hasExactMatch) {
-      // 完全一致がある場合、その値と前後の値を追加（最大3つ）
-      MeasurementData? lowerData;
-      MeasurementData? exactData;
-      MeasurementData? upperData;
-      
-      for (int i = 0; i < tank.measurementData.length; i++) {
-        if (tank.measurementData[i].capacity == targetCapacity) {
-          exactData = tank.measurementData[i];
-          
-          // 一つ前の値を追加
-          if (i > 0) {
-            lowerData = tank.measurementData[i - 1];
-          }
-          // 一つ後の値を追加
-          if (i < tank.measurementData.length - 1) {
-            upperData = tank.measurementData[i + 1];
-          }
-          break;
-        }
-      }
-      
-      if (lowerData != null) {
-        result.add({
-          'capacity': lowerData.capacity,
-          'measurement': lowerData.measurement
-        });
-      }
-      
-      if (exactData != null) {
-        result.add({
-          'capacity': exactData.capacity,
-          'measurement': exactData.measurement
-        });
-      }
-      
-      if (upperData != null) {
-        result.add({
-          'capacity': upperData.capacity,
-          'measurement': upperData.measurement
-        });
-      }
-    } else {
-      // 完全一致がない場合、最も近い上下の値を追加（最大2つ）
-      MeasurementData? lowerData;
-      MeasurementData? upperData;
-      
-      for (int i = 0; i < tank.measurementData.length - 1; i++) {
-        if (tank.measurementData[i].capacity <= targetCapacity && 
-            targetCapacity <= tank.measurementData[i + 1].capacity) {
-          lowerData = tank.measurementData[i];
-          upperData = tank.measurementData[i + 1];
-          break;
-        }
-      }
-      
-      // 全てのデータがtargetCapacityより小さい場合
-      if (upperData == null && tank.measurementData.isNotEmpty) {
-        lowerData = tank.measurementData.last;
-      }
-      
-      // 全てのデータがtargetCapacityより大きい場合
-      if (lowerData == null && tank.measurementData.isNotEmpty) {
-        upperData = tank.measurementData.first;
-      }
-      
-      if (lowerData != null) {
-        result.add({
-          'capacity': lowerData.capacity,
-          'measurement': lowerData.measurement
-        });
-      }
-      
-      if (upperData != null) {
-        result.add({
-          'capacity': upperData.capacity,
-          'measurement': upperData.measurement
-        });
+    String tankNumber, double targetValue) async {
+  final tank = await getTankData(tankNumber);
+  if (tank == null || tank.measurementData.isEmpty) return [];
+  
+  // 単純に前後の近似値を取得（線形補間ではなく）
+  List<Map<String, double>> result = [];
+  
+  // データを適切にソート（検尺値または容量で）
+  tank.measurementData.sort((a, b) => a.measurement.compareTo(b.measurement));
+  
+  // 完全一致があるかどうか
+  int exactIndex = -1;
+  for (int i = 0; i < tank.measurementData.length; i++) {
+    if (tank.measurementData[i].measurement == targetValue) {
+      exactIndex = i;
+      break;
+    }
+  }
+  
+  if (exactIndex >= 0) {
+    // 完全一致がある場合はその値を返す
+    result.add({
+      'capacity': tank.measurementData[exactIndex].capacity,
+      'measurement': tank.measurementData[exactIndex].measurement,
+    });
+  } else {
+    // 完全一致がない場合は前後の値を返す
+    int lowerIndex = -1;
+    for (int i = 0; i < tank.measurementData.length; i++) {
+      if (tank.measurementData[i].measurement < targetValue) {
+        lowerIndex = i;
+      } else {
+        break;
       }
     }
     
-    return result;
+    // 前の値を追加
+    if (lowerIndex >= 0) {
+      result.add({
+        'capacity': tank.measurementData[lowerIndex].capacity,
+        'measurement': tank.measurementData[lowerIndex].measurement,
+      });
+    }
+    
+    // 次の値を追加
+    if (lowerIndex + 1 < tank.measurementData.length) {
+      result.add({
+        'capacity': tank.measurementData[lowerIndex + 1].capacity,
+        'measurement': tank.measurementData[lowerIndex + 1].measurement,
+      });
+    }
   }
+  
+  return result;
+}
 }

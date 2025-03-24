@@ -8,8 +8,8 @@ import '/widgets/tank_selector.dart';
 import '/widgets/measurement_input.dart';
 import '/widgets/result_card.dart';
 import '/core/utils/validators.dart';
-import '/models/measurement_result.dart';
 import 'dilution_controller.dart';
+import '/models/dilution_plan.dart';
 
 class DilutionScreen extends StatefulWidget {
   final DilutionPlan? planToEdit;

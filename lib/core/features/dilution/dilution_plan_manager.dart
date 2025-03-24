@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '/core/services/storage_service.dart';
-import '/models/measurement_result.dart';
+import '/models/dilution_plan.dart';
 
 /// 割水計画を管理するクラス
 /// 計画の一覧表示、完了、削除などを担当

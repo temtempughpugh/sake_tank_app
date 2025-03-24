@@ -26,89 +26,94 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // 共通サービスのプロバイダー設定
-        Provider<TankDataService>(
-          create: (_) => TankDataService(),
-        ),
-        Provider<StorageService>(
-          create: (_) => StorageService(),
-        ),
-        ProxyProvider<TankDataService, MeasurementService>(
-          update: (_, tankDataService, __) => MeasurementService(tankDataService),
-        ),
-        ProxyProvider<TankDataService, ApproximationService>(
-          update: (_, tankDataService, __) => ApproximationService(tankDataService),
-        ),
-        // 画面コントローラーのプロバイダー設定
-        ProxyProvider<StorageService, DilutionPlanManager>(
-          update: (_, storageService, __) => DilutionPlanManager(storageService: storageService),
-        ),
-      ],
+    // 共通サービスのプロバイダー設定
+    Provider<TankDataService>(
+      create: (_) => TankDataService(),
+    ),
+    Provider<StorageService>(
+      create: (_) => StorageService(),
+    ),
+    ProxyProvider<TankDataService, MeasurementService>(
+      update: (_, tankDataService, __) => MeasurementService(tankDataService),
+    ),
+    ProxyProvider<TankDataService, ApproximationService>(
+      update: (_, tankDataService, __) => ApproximationService(tankDataService),
+    ),
+    // 画面コントローラーのプロバイダー設定
+    ChangeNotifierProxyProvider<StorageService, DilutionPlanManager>(
+      create: (context) => DilutionPlanManager(storageService: context.read<StorageService>()),
+      update: (context, service, previous) => previous ?? DilutionPlanManager(storageService: service),
+    ),
+  ],
       child: MaterialApp(
         title: '相原酒造タンク管理',
         theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Color(0xFF1A5F7A),
-            brightness: Brightness.light,
-          ),
-          appBarTheme: AppBarTheme(
-            elevation: 0,
-            centerTitle: true,
-            backgroundColor: Color(0xFF1A5F7A),
-            foregroundColor: Colors.white,
-          ),
-          cardTheme: CardTheme(
-            elevation: 1,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            margin: EdgeInsets.symmetric(vertical: 8, horizontal: 0),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            filled: true,
-            fillColor: Colors.grey[50],
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          outlinedButtonTheme: OutlinedButtonThemeData(
-            style: OutlinedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          floatingActionButtonTheme: FloatingActionButtonThemeData(
-            backgroundColor: Color(0xFF1A5F7A),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          tabBarTheme: TabBarTheme(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-          ),
-          fontFamily: 'Noto Sans JP',
-        ),
+  useMaterial3: true,
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: Color(0xFF1A5F7A),
+    brightness: Brightness.light,
+  ),
+  appBarTheme: AppBarTheme(
+    elevation: 0,
+    centerTitle: true,
+    backgroundColor: Color(0xFF1A5F7A),
+    foregroundColor: Colors.white,
+  ),
+  cardTheme: CardTheme(
+    elevation: 1,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+    ),
+    margin: EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+  ),
+  inputDecorationTheme: InputDecorationTheme(
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    filled: true,
+    fillColor: Colors.grey[50],
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+  ),
+  textButtonTheme: TextButtonThemeData(
+    style: TextButton.styleFrom(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+  ),
+  outlinedButtonTheme: OutlinedButtonThemeData(
+    style: OutlinedButton.styleFrom(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+  ),
+  floatingActionButtonTheme: FloatingActionButtonThemeData(
+    backgroundColor: Color(0xFF1A5F7A),
+    foregroundColor: Colors.white,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+    ),
+  ),
+  // Improved tab styling for better visibility
+  tabBarTheme: TabBarTheme(
+    labelColor: Colors.white,
+    unselectedLabelColor: Colors.white70,
+    indicatorColor: Colors.white,
+    indicatorSize: TabBarIndicatorSize.tab,
+    labelStyle: TextStyle(fontWeight: FontWeight.bold),
+    unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal),
+  ),
+  fontFamily: 'Noto Sans JP',
+),
         initialRoute: '/',
         routes: {
           '/': (context) => HomeScreen(),

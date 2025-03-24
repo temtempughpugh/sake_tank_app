@@ -1,34 +1,40 @@
-// lib/features/dilution/dilution_controller.dart
 import 'package:flutter/material.dart';
 import '/core/services/tank_data_service.dart';
 import '/core/services/measurement_service.dart';
 import '/core/services/approximation_service.dart';
 import '/core/services/storage_service.dart';
+import '/models/measurement_result.dart';
 import '/models/dilution_plan.dart';
-import '/models/dilution_result.dart';
-import '/models/measurement_capacity_pair.dart';
+import '/models/dilution_calc_result.dart';
 
+
+/// 割水計算機能のためのコントローラークラス
+/// UI状態管理とサービス機能の橋渡し役
 class DilutionController extends ChangeNotifier {
+  // 依存サービス
   final TankDataService _tankDataService;
   final MeasurementService _measurementService;
   final ApproximationService _approximationService;
   final StorageService _storageService;
   
+  // 編集モード
+  bool _isEditMode = false;
+  String? _editPlanId;
+  
+  // 入力コントローラー
+  final TextEditingController initialVolumeController = TextEditingController();
+  final TextEditingController measurementController = TextEditingController();
+  final TextEditingController initialAlcoholController = TextEditingController();
+  final TextEditingController targetAlcoholController = TextEditingController();
+  final TextEditingController sakeNameController = TextEditingController();
+  final TextEditingController personInChargeController = TextEditingController();
+  
   // 状態変数
+  String? _selectedTank;
   bool _isLoading = false;
   bool _isCalculating = false;
-  String? _errorMessage;
   
-  // 入力フィールド
-  String? selectedTank;
-  TextEditingController initialVolumeController = TextEditingController();
-  TextEditingController measurementController = TextEditingController();
-  TextEditingController initialAlcoholController = TextEditingController();
-  TextEditingController targetAlcoholController = TextEditingController();
-  TextEditingController sakeNameController = TextEditingController();
-  TextEditingController personInChargeController = TextEditingController();
-  
-  // 近似値関連
+  // 近似値の状態
   List<Map<String, double>> _volumeApproximations = [];
   List<Map<String, double>> _measurementApproximations = [];
   bool _isLoadingVolumeApproximations = false;
@@ -36,58 +42,74 @@ class DilutionController extends ChangeNotifier {
   bool _isUpdatingVolume = false;
   bool _isUpdatingMeasurement = false;
   
-  // 計算結果
-  DilutionResult? _dilutionResult;
+  // 計算結果関連
+  DilutionCalcResult? _dilutionResult;
+  double? _finalMeasurement;
   double? _selectedFinalVolume;
   double? _selectedFinalMeasurement;
-  
-  // 編集モード
-  bool _isEditMode = false;
-  String? _editPlanId;
+  double? _adjustedWaterToAdd;
+  double? _actualAlcoholPercentage;
+  List<Map<String, double>> _finalVolumeApproximations = [];
+  bool _isExactMatch = false;
   
   // ゲッター
+  String? get selectedTank => _selectedTank;
   bool get isLoading => _isLoading;
   bool get isCalculating => _isCalculating;
-  String? get errorMessage => _errorMessage;
   bool get isEditMode => _isEditMode;
+  String? get editPlanId => _editPlanId;
   
   List<Map<String, double>> get volumeApproximations => _volumeApproximations;
   List<Map<String, double>> get measurementApproximations => _measurementApproximations;
   bool get isLoadingVolumeApproximations => _isLoadingVolumeApproximations;
   bool get isLoadingMeasurementApproximations => _isLoadingMeasurementApproximations;
   
-  DilutionResult? get dilutionResult => _dilutionResult;
+  DilutionCalcResult? get dilutionResult => _dilutionResult;
+  double? get finalMeasurement => _finalMeasurement;
   double? get selectedFinalVolume => _selectedFinalVolume;
   double? get selectedFinalMeasurement => _selectedFinalMeasurement;
+  double? get adjustedWaterToAdd => _adjustedWaterToAdd;
+  double? get actualAlcoholPercentage => _actualAlcoholPercentage;
+  List<Map<String, double>> get finalVolumeApproximations => _finalVolumeApproximations;
+  bool get isExactMatch => _isExactMatch;
   
-  // 初期化値
-  double? initialVolume;
-  double? initialMeasurement;
-  double? initialAlcoholPercentage;
-  double? targetAlcoholPercentage;
+  // 計算結果があるかどうか
+  bool get hasCalculationResult => _dilutionResult != null;
   
+  // コンストラクタ
   DilutionController({
     required TankDataService tankDataService,
     required MeasurementService measurementService,
     required ApproximationService approximationService,
     required StorageService storageService,
-  }) : 
-    _tankDataService = tankDataService,
-    _measurementService = measurementService,
-    _approximationService = approximationService,
-    _storageService = storageService {
-    // リスナー追加
-    initialVolumeController.addListener(_handleVolumeChanged);
-    measurementController.addListener(_handleMeasurementChanged);
+  }) : _tankDataService = tankDataService,
+       _measurementService = measurementService,
+       _approximationService = approximationService,
+       _storageService = storageService {
+    // 初期化処理
+    _init();
+  }
+  
+  /// 初期化処理
+  Future<void> _init() async {
+    // 入力コントローラーの変更リスナーを追加
+    initialVolumeController.addListener(_findMeasurementFromVolume);
+    measurementController.addListener(_findVolumeFromMeasurement);
+    
+    // 最後に選択されたタンクを読み込む
+    final lastTank = await _storageService.getLastSelectedTank();
+    if (lastTank != null) {
+      _selectedTank = lastTank;
+      notifyListeners();
+    }
   }
   
   @override
   void dispose() {
-    // リスナー削除
-    initialVolumeController.removeListener(_handleVolumeChanged);
-    measurementController.removeListener(_handleMeasurementChanged);
+    // コントローラーの破棄
+    initialVolumeController.removeListener(_findMeasurementFromVolume);
+    measurementController.removeListener(_findVolumeFromMeasurement);
     
-    // コントローラー破棄
     initialVolumeController.dispose();
     measurementController.dispose();
     initialAlcoholController.dispose();
@@ -98,15 +120,27 @@ class DilutionController extends ChangeNotifier {
     super.dispose();
   }
   
-  // 初期化 (編集モード)
-  void initWithPlan(DilutionPlan plan) {
+  /// タンクを選択
+  void selectTank(String tankNumber) {
+    if (_selectedTank == tankNumber) return;
+    
+    _selectedTank = tankNumber;
+    _storageService.saveLastSelectedTank(tankNumber);
+    
+    // 選択変更に伴うリセット
+    _resetApproximations();
+    _resetCalculationResult();
+    
+    notifyListeners();
+  }
+  
+  /// 編集モードに設定
+  void setEditMode(DilutionPlan plan) {
     _isEditMode = true;
     _editPlanId = plan.id;
     
-    // タンク選択
-    selectedTank = plan.tankNumber;
-    
-    // フォーム値をセット
+    // フォーム値を設定
+    _selectedTank = plan.tankNumber;
     initialVolumeController.text = plan.initialVolume.toString();
     measurementController.text = plan.initialMeasurement.toString();
     initialAlcoholController.text = plan.initialAlcoholPercentage.toString();
@@ -114,215 +148,43 @@ class DilutionController extends ChangeNotifier {
     sakeNameController.text = plan.sakeName;
     personInChargeController.text = plan.personInCharge;
     
-    // 計算用の値もセット
-    initialVolume = plan.initialVolume;
-    initialMeasurement = plan.initialMeasurement;
-    initialAlcoholPercentage = plan.initialAlcoholPercentage;
-    targetAlcoholPercentage = plan.targetAlcoholPercentage;
-    
-    // 自動計算を実行
+    // 計算を実行して結果を表示
     calculateDilution();
-  }
-  
-  // タンク選択時
-  void selectTank(String tank) {
-    selectedTank = tank;
+    
     notifyListeners();
-    
-    // 最終タンク保存
-    _storageService.saveLastSelectedTank(tank);
   }
   
-  // 容量入力時の処理
-  void _handleVolumeChanged() {
-    if (_isUpdatingVolume) return;  // ループ防止
+  /// 容量から検尺を探す
+  Future
+  <void> _findMeasurementFromVolume() async {
+    // ループ防止（更新中なら処理しない）
+    if (_isUpdatingMeasurement) return;
     
-    final volumeText = initialVolumeController.text;
-    initialVolume = double.tryParse(volumeText);
-    
-    if (initialVolume != null) {
-      _findMeasurementFromVolume();
-    } else {
-      _volumeApproximations = [];
-    }
-  }
-  
-  // 検尺入力時の処理
-  void _handleMeasurementChanged() {
-    if (_isUpdatingMeasurement) return;  // ループ防止
-    
-    final measurementText = measurementController.text;
-    initialMeasurement = double.tryParse(measurementText);
-    
-    if (initialMeasurement != null) {
-      _findVolumeFromMeasurement();
-    } else {
+    if (_selectedTank == null || initialVolumeController.text.isEmpty) {
       _measurementApproximations = [];
-    }
-  }
-  
-  // 容量から検尺を計算
-  Future<void> calculateMeasurementFromVolume() async {
-    if (selectedTank == null) {
-      _errorMessage = 'タンクを選択してください';
       notifyListeners();
       return;
     }
     
     final volume = double.tryParse(initialVolumeController.text);
-    if (volume == null) {
-      _errorMessage = '有効な容量（数値）を入力してください';
-      notifyListeners();
-      return;
-    }
-    
-    _isLoading = true;
-    notifyListeners();
-    
-    try {
-      final result = await _measurementService.calculateMeasurement(selectedTank!, volume);
-      if (result != null) {
-        _isUpdatingMeasurement = true;
-        initialMeasurement = result.measurement;
-        measurementController.text = result.measurement.toStringAsFixed(1);
-        _isUpdatingMeasurement = false;
-      } else {
-        _errorMessage = 'この容量に対応する検尺データが見つかりません';
-      }
-    } catch (e) {
-      _errorMessage = '計算中にエラーが発生しました: $e';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-  
-  // 検尺から容量を計算
-  Future<void> calculateVolumeFromMeasurement() async {
-    if (selectedTank == null) {
-      _errorMessage = 'タンクを選択してください';
-      notifyListeners();
-      return;
-    }
-    
-    final measurement = double.tryParse(measurementController.text);
-    if (measurement == null) {
-      _errorMessage = '有効な検尺値（数値）を入力してください';
-      notifyListeners();
-      return;
-    }
-    
-    _isLoading = true;
-    notifyListeners();
-    
-    try {
-      final result = await _measurementService.calculateCapacity(selectedTank!, measurement);
-      if (result != null) {
-        _isUpdatingVolume = true;
-        initialVolume = result.capacity;
-        initialVolumeController.text = result.capacity.toStringAsFixed(1);
-        _isUpdatingVolume = false;
-      } else {
-        _errorMessage = 'この検尺値に対応する容量データが見つかりません';
-      }
-    } catch (e) {
-      _errorMessage = '計算中にエラーが発生しました: $e';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-  
-  // 近似値検索: 容量→検尺
-  Future<void> _findMeasurementFromVolume() async {
-    if (selectedTank == null || initialVolume == null) {
-      _measurementApproximations = [];
-      notifyListeners();
-      return;
-    }
+    if (volume == null) return;
     
     _isLoadingMeasurementApproximations = true;
     notifyListeners();
     
-    // 遅延処理（連続入力時の負荷軽減）
+    // 遅延処理で連続入力時の負荷を軽減
     await Future.delayed(Duration(milliseconds: 300));
     
     try {
-      // タンクデータを取得
-      final tankData = await _tankDataService.getTankData(selectedTank!);
-      if (tankData.isEmpty) {
-        _measurementApproximations = [];
-        _isLoadingMeasurementApproximations = false;
-        notifyListeners();
-        return;
-      }
+      // 容量に対応する近似検尺値を取得
+      final approximations = await _approximationService.findApproximateMeasurementsByVolume(
+        _selectedTank!,
+        volume
+      );
       
-      // 容量でソート
-      tankData.sort((a, b) => a.capacity.compareTo(b.capacity));
-      
-      // 最大・最小容量を取得
-      final minCapacity = tankData.first.capacity;
-      final maxCapacity = tankData.last.capacity;
-      
-      // 容量が範囲外か確認
-      if (initialVolume! < minCapacity || initialVolume! > maxCapacity) {
-        // 最も近い値を提案
-        _measurementApproximations = [
-          {
-            'capacity': initialVolume! < minCapacity ? minCapacity : maxCapacity,
-            'measurement': initialVolume! < minCapacity ? tankData.first.measurement : tankData.last.measurement,
-          }
-        ];
-        _isLoadingMeasurementApproximations = false;
-        notifyListeners();
-        return;
-      }
-      
-      // 完全一致を確認
-      bool hasExactMatch = tankData.any((data) => data.capacity == initialVolume);
-      
-      if (hasExactMatch) {
-        // 完全一致があれば自動的に検尺値を設定
-        final exactMatch = tankData.firstWhere((data) => data.capacity == initialVolume);
-        
-        _isUpdatingMeasurement = true;
-        measurementController.text = exactMatch.measurement.toString();
-        initialMeasurement = exactMatch.measurement;
-        _isUpdatingMeasurement = false;
-        
-        _measurementApproximations = [];
-      } else {
-        // 近似値を探す
-        List<Map<String, double>> approximations = [];
-        MeasurementCapacityPair? lowerData;
-        MeasurementCapacityPair? upperData;
-        
-        for (int i = 0; i < tankData.length - 1; i++) {
-          if (tankData[i].capacity <= initialVolume! && initialVolume! <= tankData[i + 1].capacity) {
-            lowerData = tankData[i];
-            upperData = tankData[i + 1];
-            break;
-          }
-        }
-        
-        if (lowerData != null) {
-          approximations.add({
-            'capacity': lowerData.capacity,
-            'measurement': lowerData.measurement
-          });
-        }
-        
-        if (upperData != null) {
-          approximations.add({
-            'capacity': upperData.capacity,
-            'measurement': upperData.measurement
-          });
-        }
-        
-        _measurementApproximations = approximations;
-      }
+      _measurementApproximations = approximations;
     } catch (e) {
-      print('近似値検索エラー: $e');
+      print('検尺の近似値取得に失敗: $e');
       _measurementApproximations = [];
     } finally {
       _isLoadingMeasurementApproximations = false;
@@ -330,96 +192,36 @@ class DilutionController extends ChangeNotifier {
     }
   }
   
-  // 近似値検索: 検尺→容量
+  /// 検尺から容量を探す
   Future<void> _findVolumeFromMeasurement() async {
-    if (selectedTank == null || initialMeasurement == null) {
+    // ループ防止
+    if (_isUpdatingVolume) return;
+    
+    if (_selectedTank == null || measurementController.text.isEmpty) {
       _volumeApproximations = [];
       notifyListeners();
       return;
     }
     
+    final measurement = double.tryParse(measurementController.text);
+    if (measurement == null) return;
+    
     _isLoadingVolumeApproximations = true;
     notifyListeners();
     
-    // 遅延処理（連続入力時の負荷軽減）
+    // 遅延処理
     await Future.delayed(Duration(milliseconds: 300));
     
     try {
-      // タンクデータを取得
-      final tankData = await _tankDataService.getTankData(selectedTank!);
-      if (tankData.isEmpty) {
-        _volumeApproximations = [];
-        _isLoadingVolumeApproximations = false;
-        notifyListeners();
-        return;
-      }
+      // 検尺値に対応する近似容量を取得
+      final approximations = await _approximationService.findApproximateVolumesByMeasurement(
+        _selectedTank!,
+        measurement
+      );
       
-      // 検尺でソート
-      tankData.sort((a, b) => a.measurement.compareTo(b.measurement));
-      
-      // 最大・最小検尺を取得
-      final minMeasurement = tankData.first.measurement;
-      final maxMeasurement = tankData.last.measurement;
-      
-      // 検尺が範囲外か確認
-      if (initialMeasurement! < minMeasurement || initialMeasurement! > maxMeasurement) {
-        // 最も近い値を提案
-        _volumeApproximations = [
-          {
-            'measurement': initialMeasurement! < minMeasurement ? minMeasurement : maxMeasurement,
-            'capacity': initialMeasurement! < minMeasurement ? tankData.first.capacity : tankData.last.capacity,
-          }
-        ];
-        _isLoadingVolumeApproximations = false;
-        notifyListeners();
-        return;
-      }
-      
-      // 完全一致を確認
-      bool hasExactMatch = tankData.any((data) => data.measurement == initialMeasurement);
-      
-      if (hasExactMatch) {
-        // 完全一致があれば自動的に容量を設定
-        final exactMatch = tankData.firstWhere((data) => data.measurement == initialMeasurement);
-        
-        _isUpdatingVolume = true;
-        initialVolumeController.text = exactMatch.capacity.toString();
-        initialVolume = exactMatch.capacity;
-        _isUpdatingVolume = false;
-        
-        _volumeApproximations = [];
-      } else {
-        // 近似値を探す
-        List<Map<String, double>> approximations = [];
-        MeasurementCapacityPair? lowerData;
-        MeasurementCapacityPair? upperData;
-        
-        for (int i = 0; i < tankData.length - 1; i++) {
-          if (tankData[i].measurement <= initialMeasurement! && initialMeasurement! <= tankData[i + 1].measurement) {
-            lowerData = tankData[i];
-            upperData = tankData[i + 1];
-            break;
-          }
-        }
-        
-        if (lowerData != null) {
-          approximations.add({
-            'measurement': lowerData.measurement,
-            'capacity': lowerData.capacity
-          });
-        }
-        
-        if (upperData != null) {
-          approximations.add({
-            'measurement': upperData.measurement,
-            'capacity': upperData.capacity
-          });
-        }
-        
-        _volumeApproximations = approximations;
-      }
+      _volumeApproximations = approximations;
     } catch (e) {
-      print('近似値検索エラー: $e');
+      print('容量の近似値取得に失敗: $e');
       _volumeApproximations = [];
     } finally {
       _isLoadingVolumeApproximations = false;
@@ -427,276 +229,218 @@ class DilutionController extends ChangeNotifier {
     }
   }
   
-  // 容量近似値選択時
-  void selectVolumeApproximation(Map<String, double> approximation) {
+  /// 検尺値を選択（近似値から）
+  void selectMeasurementApproximation(double measurement, double capacity) {
+    // 更新中フラグをセット
     _isUpdatingVolume = true;
     _isUpdatingMeasurement = true;
     
-    initialVolume = approximation['capacity'];
-    initialVolumeController.text = initialVolume.toString();
+    // 値を更新
+    measurementController.text = measurement.toString();
+    initialVolumeController.text = capacity.toString();
     
-    initialMeasurement = approximation['measurement'];
-    measurementController.text = initialMeasurement.toString();
+    // リセット
+    _resetApproximations();
     
-    _volumeApproximations = [];
-    _measurementApproximations = [];
-    
-    _isUpdatingVolume = false;
-    _isUpdatingMeasurement = false;
+    // フラグをリセット
+    Future.delayed(Duration(milliseconds: 100), () {
+      _isUpdatingVolume = false;
+      _isUpdatingMeasurement = false;
+    });
     
     notifyListeners();
   }
   
-  // 検尺近似値選択時
-  void selectMeasurementApproximation(Map<String, double> approximation) {
+  /// 容量を選択（近似値から）
+  void selectVolumeApproximation(double capacity, double measurement) {
+    // 更新中フラグをセット
     _isUpdatingVolume = true;
     _isUpdatingMeasurement = true;
     
-    initialMeasurement = approximation['measurement'];
-    measurementController.text = initialMeasurement.toString();
+    // 値を更新
+    initialVolumeController.text = capacity.toString();
+    measurementController.text = measurement.toString();
     
-    initialVolume = approximation['capacity'];
-    initialVolumeController.text = initialVolume.toString();
+    // リセット
+    _resetApproximations();
     
-    _measurementApproximations = [];
-    _volumeApproximations = [];
-    
-    _isUpdatingVolume = false;
-    _isUpdatingMeasurement = false;
+    // フラグをリセット
+    Future.delayed(Duration(milliseconds: 100), () {
+      _isUpdatingVolume = false;
+      _isUpdatingMeasurement = false;
+    });
     
     notifyListeners();
   }
   
-  // 割水計算実行
-  Future<void> calculateDilution() async {
-    _errorMessage = null;
-    
-    if (selectedTank == null) {
-      _errorMessage = 'タンクを選択してください';
-      notifyListeners();
-      return;
+  /// 検尺から容量を計算
+  Future<void> calculateCapacityFromMeasurement() async {
+    if (_selectedTank == null) {
+      throw Exception('タンクが選択されていません');
     }
     
-    initialVolume = double.tryParse(initialVolumeController.text);
-    if (initialVolume == null) {
-      _errorMessage = '有効な初期容量（数値）を入力してください';
-      notifyListeners();
-      return;
+    final measurement = double.tryParse(measurementController.text);
+    if (measurement == null) {
+      throw Exception('有効な検尺値を入力してください');
     }
     
-    initialAlcoholPercentage = double.tryParse(initialAlcoholController.text);
-    if (initialAlcoholPercentage == null) {
-      _errorMessage = '有効な初期アルコール度数（数値）を入力してください';
-      notifyListeners();
-      return;
-    }
+    _isUpdatingVolume = true;
     
-    targetAlcoholPercentage = double.tryParse(targetAlcoholController.text);
-    if (targetAlcoholPercentage == null) {
-      _errorMessage = '有効な目標アルコール度数（数値）を入力してください';
-      notifyListeners();
-      return;
-    }
-    
-    if (targetAlcoholPercentage >= initialAlcoholPercentage) {
-      _errorMessage = '目標アルコール度数は初期アルコール度数より低くする必要があります';
-      notifyListeners();
-      return;
-    }
-    
-    initialMeasurement = double.tryParse(measurementController.text);
-    if (initialMeasurement == null) {
-      _errorMessage = '有効な検尺値（数値）を入力してください';
-      notifyListeners();
-      return;
-    }
-    
-    // タンクの容量範囲をチェック
     try {
-      // タンクの最大容量を取得
-      final maxCapacity = await _tankDataService.getMaxCapacity(selectedTank!);
-      if (maxCapacity != null && initialVolume! > maxCapacity) {
-        _errorMessage = '入力された容量(${initialVolume!.toStringAsFixed(1)}L)はタンク${selectedTank}の最大容量(${maxCapacity.toStringAsFixed(1)}L)を超えています';
-        notifyListeners();
-        return;
+      final result = await _tankDataService.calculateCapacity(_selectedTank!, measurement);
+      if (result != null) {
+        initialVolumeController.text = result.capacity.toStringAsFixed(1);
+      } else {
+        throw Exception('この検尺値に対応する容量が見つかりません');
       }
-      
-      // タンクのデータを取得して最小容量をチェック
-      final tankData = await _tankDataService.getTankData(selectedTank!);
-      if (tankData.isNotEmpty) {
-        tankData.sort((a, b) => a.capacity.compareTo(b.capacity));
-        final minCapacity = tankData.first.capacity;
-        
-        if (initialVolume! < minCapacity) {
-          _errorMessage = '入力された容量(${initialVolume!.toStringAsFixed(1)}L)はタンク${selectedTank}の最小容量(${minCapacity.toStringAsFixed(1)}L)未満です';
-          notifyListeners();
-          return;
-        }
+    } finally {
+      _isUpdatingVolume = false;
+    }
+  }
+  
+  /// 容量から検尺を計算
+  Future<void> calculateMeasurementFromCapacity() async {
+    if (_selectedTank == null) {
+      throw Exception('タンクが選択されていません');
+    }
+    
+    final capacity = double.tryParse(initialVolumeController.text);
+    if (capacity == null) {
+      throw Exception('有効な容量を入力してください');
+    }
+    
+    _isUpdatingMeasurement = true;
+    
+    try {
+      final result = await _tankDataService.calculateMeasurement(_selectedTank!, capacity);
+      if (result != null) {
+        measurementController.text = result.measurement.toStringAsFixed(1);
+      } else {
+        throw Exception('この容量に対応する検尺値が見つかりません');
       }
-    } catch (e) {
-      print('容量チェック中にエラーが発生しました: $e');
-      // エラーが発生してもとりあえず計算は続行
+    } finally {
+      _isUpdatingMeasurement = false;
+    }
+  }
+  
+  /// 割水計算を実行
+  Future<void> calculateDilution() async {
+    if (_selectedTank == null) {
+      throw Exception('タンクを選択してください');
+    }
+    
+    final initialVolume = double.tryParse(initialVolumeController.text);
+    if (initialVolume == null) {
+      throw Exception('有効な初期容量を入力してください');
+    }
+    
+    final initialAlcohol = double.tryParse(initialAlcoholController.text);
+    if (initialAlcohol == null) {
+      throw Exception('有効な初期アルコール度数を入力してください');
+    }
+    
+    final targetAlcohol = double.tryParse(targetAlcoholController.text);
+    if (targetAlcohol == null) {
+      throw Exception('有効な目標アルコール度数を入力してください');
+    }
+    
+    if (targetAlcohol >= initialAlcohol) {
+      throw Exception('目標アルコール度数は初期アルコール度数より低くする必要があります');
     }
     
     _isCalculating = true;
     notifyListeners();
     
     try {
-      // 計算実行
-      
-      // 1. 最終容量と追加水量を計算
-      final finalVolume = initialVolume! * (initialAlcoholPercentage! / targetAlcoholPercentage!);
-      final waterToAdd = finalVolume - initialVolume!;
-      
-      // 2. 最終検尺値を計算
-      final measurementResult = await _measurementService.calculateMeasurement(
-        selectedTank!, 
-        finalVolume
-      );
-      
-      if (measurementResult == null) {
-        _errorMessage = '検尺値の計算に失敗しました';
-        _isCalculating = false;
-        notifyListeners();
-        return;
+      // タンクの容量範囲チェック
+      final maxCapacity = await _tankDataService.getMaxCapacity(_selectedTank!);
+      if (maxCapacity != null && initialVolume > maxCapacity) {
+        throw Exception('入力された容量(${initialVolume.toStringAsFixed(1)}L)はタンク${_selectedTank}の最大容量(${maxCapacity.toStringAsFixed(1)}L)を超えています');
       }
       
-      final finalMeasurement = measurementResult.measurement;
+      // 計算される最終容量をチェック
+      final estimatedFinalVolume = initialVolume * (initialAlcohol / targetAlcohol);
+      if (maxCapacity != null && estimatedFinalVolume > maxCapacity) {
+        throw Exception('計算される割水後の容量(${estimatedFinalVolume.toStringAsFixed(1)}L)がタンク${_selectedTank}の最大容量(${maxCapacity.toStringAsFixed(1)}L)を超えています\n\n目標アルコール度数を下げるか、初期容量を減らしてください');
+      }
       
-      // 3. 容量の近似値を取得
-      final tankData = await _tankDataService.getTankData(selectedTank!);
-      final nearestPairs = await _approximationService.findNearestPairsForDilution(
-        tankData, 
-        finalVolume
+      // 割水計算実行
+      final result = _measurementService.calculateDilution(
+        initialVolume: initialVolume,
+        initialAlcoholPercentage: initialAlcohol,
+        targetAlcoholPercentage: targetAlcohol,
       );
       
-      // 4. 結果を設定
-      _dilutionResult = DilutionResult(
-        initialVolume: initialVolume!,
-        initialAlcoholPercentage: initialAlcoholPercentage!,
-        targetAlcoholPercentage: targetAlcoholPercentage!,
-        waterToAdd: waterToAdd,
-        finalVolume: finalVolume,
-        finalMeasurement: finalMeasurement,
-        nearestAvailablePairs: nearestPairs,
-        isExactMatch: measurementResult.isExactMatch,
+      // 検尺値を計算
+      MeasurementResult? measurementResult;
+      try {
+        measurementResult = await _tankDataService.calculateMeasurement(
+          _selectedTank!,
+          result.finalVolume
+        );
+      } catch (e) {
+        print('検尺計算に失敗: $e');
+      }
+      
+      // 最終容量の近似値を取得
+      final approxVolumes = await _approximationService.findNearestVolumePairs(
+        _selectedTank!,
+        result.finalVolume
       );
       
-      // 選択値をリセット
+      // 完全一致かどうかを判定
+      bool isExact = false;
+      if (measurementResult != null) {
+        isExact = measurementResult.isExactMatch;
+      } else if (approxVolumes.isNotEmpty) {
+        // 容量が完全一致するかチェック
+        isExact = approxVolumes.any((pair) => 
+          (pair['capacity']! - result.finalVolume).abs() < 0.001);
+      }
+      
+      // 結果を設定
+      _dilutionResult = result;
+      _finalMeasurement = measurementResult?.measurement;
+      _finalVolumeApproximations = approxVolumes;
+      _isExactMatch = isExact;
+      
+      // 選択された値をリセット
       _selectedFinalVolume = null;
       _selectedFinalMeasurement = null;
+      _adjustedWaterToAdd = null;
+      _actualAlcoholPercentage = null;
+      
     } catch (e) {
-      _errorMessage = '計算中にエラーが発生しました: $e';
+      rethrow;
     } finally {
       _isCalculating = false;
       notifyListeners();
     }
   }
   
-  // 最終容量の近似値選択
-  void selectFinalVolume(Map<String, double> pair) {
+  /// 最終容量を選択（近似値から）
+  void selectFinalVolume(double volume, double measurement) {
     if (_dilutionResult == null) return;
-    
-    final volume = pair['capacity']!;
-    final measurement = pair['measurement']!;
     
     _selectedFinalVolume = volume;
     _selectedFinalMeasurement = measurement;
     
-    // 調整後の値を計算
-    final adjustedWaterToAdd = volume - initialVolume!;
-    final adjustedAlcoholPercentage = (initialVolume! * initialAlcoholPercentage!) / volume;
+    // 水量を調整
+    _adjustedWaterToAdd = volume - double.parse(initialVolumeController.text);
     
-    // 結果を更新
-    _dilutionResult = DilutionResult(
-      initialVolume: _dilutionResult!.initialVolume,
-      initialAlcoholPercentage: _dilutionResult!.initialAlcoholPercentage,
-      targetAlcoholPercentage: _dilutionResult!.targetAlcoholPercentage,
-      waterToAdd: _dilutionResult!.waterToAdd,
-      finalVolume: _dilutionResult!.finalVolume,
-      finalMeasurement: _dilutionResult!.finalMeasurement,
-      nearestAvailablePairs: _dilutionResult!.nearestAvailablePairs,
-      isExactMatch: _dilutionResult!.isExactMatch,
-      adjustedWaterToAdd: adjustedWaterToAdd,
-      adjustedFinalVolume: volume,
-      adjustedFinalMeasurement: measurement,
-      adjustedAlcoholPercentage: adjustedAlcoholPercentage,
+    // 実際のアルコール度数を再計算
+    _actualAlcoholPercentage = _measurementService.calculateActualAlcohol(
+      originalLiquorVolume: double.parse(initialVolumeController.text),
+      originalAlcoholPercentage: double.parse(initialAlcoholController.text),
+      dilutionAmount: _adjustedWaterToAdd!,
     );
     
     notifyListeners();
   }
   
-  // 割水計画を保存
-  Future<bool> saveDilutionPlan() async {
-    if (selectedTank == null || _dilutionResult == null) {
-      _errorMessage = 'タンクが選択されていないか、計算結果がありません';
-      notifyListeners();
-      return false;
-    }
-    
-    if (initialVolume == null || initialMeasurement == null) {
-      _errorMessage = '初期容量または検尺が設定されていません';
-      notifyListeners();
-      return false;
-    }
-    
-    // 編集時は既存IDを使用、新規作成時は新しいIDを生成
-    final planId = _isEditMode ? _editPlanId! : DateTime.now().millisecondsSinceEpoch.toString();
-    
-    // 調整後の値または元の値を使用
-    final waterToAdd = _selectedFinalVolume != null 
-        ? _dilutionResult!.adjustedWaterToAdd! 
-        : _dilutionResult!.waterToAdd;
-    
-    final finalVolume = _selectedFinalVolume ?? _dilutionResult!.finalVolume;
-    final finalMeasurement = _selectedFinalMeasurement ?? _dilutionResult!.finalMeasurement;
-    
-    final actualAlcohol = _selectedFinalVolume != null 
-        ? _dilutionResult!.adjustedAlcoholPercentage! 
-        : _dilutionResult!.targetAlcoholPercentage;
-    
-    _isLoading = true;
-    notifyListeners();
-    
-    try {
-      final plan = DilutionPlan(
-        id: planId,
-        tankNumber: selectedTank!,
-        initialVolume: initialVolume!,
-        initialMeasurement: initialMeasurement!,
-        initialAlcoholPercentage: initialAlcoholPercentage!,
-        targetAlcoholPercentage: targetAlcoholPercentage!,
-        waterToAdd: waterToAdd,
-        finalVolume: finalVolume,
-        finalMeasurement: finalMeasurement,
-        sakeName: sakeNameController.text,
-        personInCharge: personInChargeController.text,
-        plannedDate: _isEditMode && widget.planToEdit != null 
-            ? widget.planToEdit!.plannedDate 
-            : DateTime.now(),
-        completionDate: _isEditMode && widget.planToEdit != null 
-            ? widget.planToEdit!.completionDate 
-            : null,
-        isCompleted: _isEditMode && widget.planToEdit != null 
-            ? widget.planToEdit!.isCompleted 
-            : false,
-      );
-      
-      await _storageService.saveDilutionPlan(plan);
-      
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = '保存中にエラーが発生しました: $e';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-  
-  // フォームクリア
+  /// フォームをリセット
   void resetForm() {
+    // 入力値をクリア
     initialVolumeController.clear();
     measurementController.clear();
     initialAlcoholController.clear();
@@ -704,17 +448,93 @@ class DilutionController extends ChangeNotifier {
     sakeNameController.clear();
     personInChargeController.clear();
     
-    initialVolume = null;
-    initialMeasurement = null;
-    initialAlcoholPercentage = null;
-    targetAlcoholPercentage = null;
-    
-    _dilutionResult = null;
-    _selectedFinalVolume = null;
-    _selectedFinalMeasurement = null;
-    
-    _errorMessage = null;
+    // 近似値と計算結果をリセット
+    _resetApproximations();
+    _resetCalculationResult();
     
     notifyListeners();
+  }
+  
+  /// 計算結果をリセット
+  void _resetCalculationResult() {
+    _dilutionResult = null;
+    _finalMeasurement = null;
+    _selectedFinalVolume = null;
+    _selectedFinalMeasurement = null;
+    _adjustedWaterToAdd = null;
+    _actualAlcoholPercentage = null;
+    _finalVolumeApproximations = [];
+    _isExactMatch = false;
+  }
+  
+  /// 近似値をリセット
+  void _resetApproximations() {
+    _volumeApproximations = [];
+    _measurementApproximations = [];
+    _isLoadingVolumeApproximations = false;
+    _isLoadingMeasurementApproximations = false;
+  }
+  
+  /// 割水計画を保存
+  Future<void> saveDilutionPlan() async {
+    if (_selectedTank == null || _dilutionResult == null) {
+      throw Exception('タンクが選択されていないか、計算結果がありません');
+    }
+    
+    final initialVolume = double.tryParse(initialVolumeController.text);
+    final initialMeasurement = double.tryParse(measurementController.text);
+    
+    if (initialVolume == null) {
+      throw Exception('有効な初期容量が入力されていません');
+    }
+    
+    if (initialMeasurement == null) {
+      throw Exception('有効な検尺値が入力されていません');
+    }
+    
+    _isLoading = true;
+    notifyListeners();
+    
+    try {
+      // 編集時は既存ID、新規作成時は新しいID
+      final planId = _isEditMode ? _editPlanId! : DateTime.now().millisecondsSinceEpoch.toString();
+      
+      // 計算に使用する値を取得
+      final waterToAdd = _selectedFinalVolume != null 
+          ? _adjustedWaterToAdd! 
+          : _dilutionResult!.waterToAdd;
+      
+      final finalVolume = _selectedFinalVolume ?? _dilutionResult!.finalVolume;
+      
+      final actualAlcohol = _selectedFinalVolume != null 
+          ? _actualAlcoholPercentage! 
+          : double.parse(targetAlcoholController.text);
+      
+      // 計画オブジェクトを作成
+      final plan = DilutionPlan(
+        id: planId,
+        tankNumber: _selectedTank!,
+        initialVolume: initialVolume,
+        initialMeasurement: initialMeasurement,
+        initialAlcoholPercentage: double.parse(initialAlcoholController.text),
+        targetAlcoholPercentage: double.parse(targetAlcoholController.text),
+        waterToAdd: waterToAdd,
+        finalVolume: finalVolume,
+        finalMeasurement: _selectedFinalMeasurement ?? _finalMeasurement ?? 0,
+        sakeName: sakeNameController.text,
+        personInCharge: personInChargeController.text,
+        plannedDate: DateTime.now(),
+        isCompleted: false,
+      );
+      
+      // 保存
+      await _storageService.saveDilutionPlan(plan);
+      
+    } catch (e) {
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }

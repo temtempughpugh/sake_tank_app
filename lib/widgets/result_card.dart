@@ -309,14 +309,14 @@ class DilutionResultCard extends StatelessWidget {
             if (actualAlcohol != null)
               _buildResultRow(
                 '実際のアルコール度数:',
-                '${actualAlcohol.toStringAsFixed(2)} %',
-                warning: (actualAlcohol - targetAlcohol).abs() > 0.1,
+                '${actualAlcohol?.toStringAsFixed(2) ?? "-"} %',
+warning: actualAlcohol != null && (actualAlcohol! - targetAlcohol).abs() > 0.1,
               ),
             
             // 近似値選択（データに正確な値がない場合）
             if (!isExactMatch && approximations.isNotEmpty) ...[
               Divider(),
-              Text(
+              const Text(
                 '近似値を選択:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),

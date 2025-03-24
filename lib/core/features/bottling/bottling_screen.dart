@@ -63,7 +63,7 @@ class _BottlingScreenState extends State<BottlingScreen> {
   Future<void> _showAddBottleDialog() async {
     BottleType? selectedType;
     double? customVolume;
-    int bottlesPerCase = 12; // デフォルト値
+    int bottlesPerCase = 0; // デフォルト値
     int caseCount = 0;
     int looseCount = 0;
     
@@ -78,23 +78,35 @@ class _BottlingScreenState extends State<BottlingScreen> {
               children: [
                 // 瓶種選択
                 DropdownButton<BottleType?>(
-                  hint: Text('瓶種を選択'),
-                  value: selectedType,
-                  items: [
-                    DropdownMenuItem(value: BottleType.large, child: Text('1,800ml (一升瓶)')),
-                    DropdownMenuItem(value: BottleType.medium, child: Text('720ml (四合瓶)')),
-                    DropdownMenuItem(value: BottleType.small, child: Text('300ml')),
-                    DropdownMenuItem(value: null, child: Text('カスタム')),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      selectedType = value;
-                      if (value != null) {
-                        bottlesPerCase = value.bottlesPerCase;
-                      }
-                    });
-                  },
-                ),
+  hint: Text('瓶種を選択'),
+  value: selectedType,
+  items: [
+    DropdownMenuItem(
+      value: BottleType.large, 
+      child: Text('1,800ml (一升瓶)'),
+    ),
+    DropdownMenuItem(
+      value: BottleType.medium, 
+      child: Text('720ml (四合瓶)'),
+    ),
+    DropdownMenuItem(
+      value: BottleType.small, 
+      child: Text('300ml'),
+    ),
+    DropdownMenuItem(
+      value: null, 
+      child: Text('カスタム'),
+    ),
+  ],
+  onChanged: (value) {
+    setState(() {
+      selectedType = value;
+      if (value != null) {
+        bottlesPerCase = value.bottlesPerCase;
+      }
+    });
+  },
+),
                 
                 // カスタム瓶情報入力
                 if (selectedType == null) ...[
